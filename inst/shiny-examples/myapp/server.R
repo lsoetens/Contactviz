@@ -213,6 +213,8 @@ shinyServer(function(input, output) {
         #################################################
         # Calculate reproduction number
         
+        # Calculate reproduction number
+        
         
         #first calculate the first component for all cases: add over the number of contacts of that case and wigh each contact by their probability of being infected
         
@@ -229,15 +231,27 @@ shinyServer(function(input, output) {
         for (i in 1: length(orphans$ID)){
           days<- as.numeric(as.Date(orphans$DOD[i])- as.Date(cases$DOD))
           orphan<- round(dgamma(days, generationtime, 1), 2)
-          dftemp<- data.frame(ID= cases$ID, days=days, orphan=orphan)
-          dftemp$proborphan<- round(dftemp$orphan/sum(dftemp$orphan),2)
+          proborphan<- round(orphan/sum(orphan),2)
+          dftemp<- data.frame(ID= cases$ID, proborphan=proborphan)
           dftemp$proborphan<- ifelse(is.na(dftemp$proborphan), 0, dftemp$proborphan)
           dftemp$proborphan<- ifelse(is.nan(dftemp$proborphan), 0, dftemp$proborphan)
-          colnames(dftemp)<- c("ID", paste("days",i, sep="_"), paste("orphan", i, sep="_"), paste("proborphan", i, sep="_"))
+          colnames(dftemp)<- c("ID", paste("proborphan", i, sep="_"))
           data<- merge(data, dftemp, by="ID", all.x=T)
         }
         
-        data$nsecondary<- round(data$rcase + data$proborphan_1 + data$proborphan_2 + data$proborphan_3, 2)
+        
+        if (length(orphans$ID)==0){
+          data$nsecondary<- round(data$rcase, 2)
+        }
+        if (length(orphans$ID)==1){
+          data$nsecondary<- round(data$rcase + data$proborphan_1, 2)
+        }
+        if (length(orphans$ID)>1){
+          sumproborphan<- rowSums(data[,(length(data)-(length(orphans$ID)-1)):length(data)], na.rm=T)
+          data<- cbind(data, sumproborphan)
+          data$nsecondary<- round(data$rcase + sumproborphan, 2)
+        }
+        
         data$nsecondary<- ifelse(is.na(data$nsecondary) & data$Type=="Case", 0, data$nsecondary)
         
         #apply moving average for plotting
@@ -274,6 +288,7 @@ shinyServer(function(input, output) {
         ma.dataframe2$higherSEM[ma.dataframe2$n <= 1]<- -Inf
         maxsEM<- max(ma.dataframe2$higherSEM, na.rm=T) #for plotting, max y-axis
         
+        ma.dataframe2<- subset(ma.dataframe2, graphdate <= currentdate)
         
         #Calculate Rt for specific time periods
         #calculate mean R0 before case detected
@@ -341,9 +356,9 @@ shinyServer(function(input, output) {
                 root= data4$Root, IDSource= data4$IDSource2, probsymp= data4$probsymp, 
                 date05= data4$date05, date95= data4$date95, graphdate= data4$graphdate)
         
-        
+        suppressWarnings(
         infectiongraph <- graph.data.frame(edges2, directed=TRUE, vertices=vertices)
-        
+        )
         
         #extract the IDs of the root-nodes
         roots<- data4$ID[data4$Root==1]
@@ -366,7 +381,12 @@ shinyServer(function(input, output) {
         #create endpoint variable
         verticedummy$endpoint<- ifelse(verticedummy$ID %in% verticedummy$IDSource, 0, 1)
         
-        for (i in 1:(5*sum(verticedummy$endpoint))){
+        endpointdf<- subset(verticedummy, endpoint==1)
+        endpointdf$nrnewrecords<- max(endpointdf$generation)-endpointdf$generation
+        
+        
+        for (i in 1: (length(verticedummy$ID)+ sum(endpointdf$nrnewrecords))){
+          
                 tryCatch({
                 if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
                         verticedummy$endpoint[i]<- c(0)
@@ -448,11 +468,11 @@ shinyServer(function(input, output) {
         vertices.dataframe$action2<- controlstart
         
         
-        dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(vertices.dataframe$graphdate, na.rm=T)+3), ymin=c(min(vertices.dataframe$yID, na.rm=T)-3), ymax=c(max(vertices.dataframe$yID, na.rm=T)+5))
-        dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(min(vertices.dataframe$yID, na.rm=T)-3), ymax=c(max(vertices.dataframe$yID, na.rm=T)+5))
+        dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(vertices.dataframe$date95, na.rm=T)+3), ymin=c(-Inf), ymax=c(Inf))
+        dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(-Inf), ymax=c(Inf))
         textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yID, na.rm=T)+3.5, max(vertices.dataframe$yID, na.rm=T)+3.5, max(vertices.dataframe$yID, na.rm=T)+3.5), hjust= c(1, 0.5, 0 ))
         
-        annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yID, na.rm=T)-3), ymax=c(max(vertices.dataframe$yID, na.rm=T)+5))
+        annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(-Inf), ymax=c(Inf))
         
         
         
@@ -468,7 +488,7 @@ shinyServer(function(input, output) {
                           xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
           geom_segment(data= subset(vertices.dataframe, !is.na(IDSource) & IDSource!=ID), 
                        aes(x=xsourcedate, y=ysource, xend=xIDdate, yend=yID, col= exposuretype, linetype=type, drop=F), 
-                       size=0.5)+
+                       size=0.7)+
           scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="Type of contact")+
           scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
                               name="Exposure type \n(# cases, # contacts in follow-up)",
@@ -479,11 +499,11 @@ shinyServer(function(input, output) {
           geom_point(data=subset(vertices.dataframe, type == "Contact"), 
                      aes(x=date05, y=yID, shape=gender),
                      col="black", fill= "black", 
-                     size=1)+
+                     size=1.5)+
           geom_point(data=subset(vertices.dataframe, type == "Contact"), 
                      aes(x=date95, y=yID, shape=gender), 
                      col="black", fill= "black",
-                     size=1)+
+                     size=1.5)+
           scale_shape_manual(name= "Gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19), 
                              labels= c(paste("man (",gendertable[1,1],",", gendertable[1,2], ")"), paste("woman (",gendertable[2,1],",", gendertable[2,2], ")"), paste("unknown (",gendertable[3,1],",", gendertable[3,2], ")")),
                              drop=F)+
@@ -494,11 +514,11 @@ shinyServer(function(input, output) {
           geom_text(data=subset(vertices.dataframe, type == "Case"), 
                     aes(x=  xIDdate, y= yID+1.5, label= ID),
                     color="black", 
-                    size=2)+
+                    size=2.5)+
           geom_text(data=subset(vertices.dataframe, type == "Contact"), 
                     aes(x= date95+1, y= yID, label= ID),
                     color="black", 
-                    size=2)+
+                    size=2.5)+
                 labs(y= "onzin titel", 
                         title= paste("Overview of the ", disease, " outbreak, ", country, "\n", min(vertices.dataframe$graphdate), " to ", currentdate))+
                 theme_bw()+
@@ -516,7 +536,7 @@ shinyServer(function(input, output) {
                         panel.grid.major.y = element_blank(),
                         panel.margin = unit(c(0,0,0,0), "line"),
                         plot.title= element_text(size=12, face="bold"),
-                        plot.margin = unit(c(0,0,0,0.42), "line"))+
+                        plot.margin = unit(c(0,0,0,0.57), "line"))+
                 guides(colour = guide_legend(order = 3), 
                         shape = guide_legend(order = 1),
                         linetype= guide_legend(order=2))
@@ -548,7 +568,7 @@ shinyServer(function(input, output) {
                         legend.title= element_text(size=10, face="bold"),
                         legend.key = element_blank(),
                         plot.title= element_text(size=12, face="bold"),
-                        plot.margin = unit(c(0,0,0,0.57), "line"))+
+                        plot.margin = unit(c(0,0,0,0.7), "line"))+
                 theme(legend.position="none")
         
         
@@ -566,10 +586,10 @@ shinyServer(function(input, output) {
           geom_line(data=ma.dataframe2, aes(x=graphdate, y=ma), col="black", size=0.6)+
           labs(x=" ", y="Rt and # secondary \ncases per case")+
           theme_bw()+
-          theme(axis.title.x=element_text(size=7,face="bold"), 
-                axis.title.y=element_text(size=7,face="bold"),
+          theme(axis.title.x=element_text(size=10,face="bold"), 
+                axis.title.y=element_text(size=10,face="bold"),
                 axis.text.x=element_blank(),
-                axis.text.y=element_text(size=7),
+                axis.text.y=element_text(size=10),
                 axis.ticks.y= element_line(colour="black"),
                 axis.ticks.x= element_blank(),
                 legend.text= element_text(size=7),
@@ -586,10 +606,10 @@ shinyServer(function(input, output) {
           scale_fill_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33"), guide=F)+
           labs(y= "Attack rate", x= "Exposure type") +
           theme_bw()+
-          theme(axis.title.y= element_text(size=7,face="bold"),
-                axis.text.y=element_text(size=7),
-                axis.title.x= element_text(size=7,face="bold"),
-                axis.text.x=element_text(size=7, angle=60, hjust=1),
+          theme(axis.title.y= element_text(size=10,face="bold"),
+                axis.text.y=element_text(size=10),
+                axis.title.x= element_text(size=10,face="bold"),
+                axis.text.x=element_text(size=10, angle=60, hjust=1),
                 legend.text= element_text(size=7),
                 legend.key = element_blank(),
                 legend.key.size= unit(c(0.4), "cm"),
@@ -613,6 +633,8 @@ shinyServer(function(input, output) {
                 widths=unit.c(unit(0.95, "npc") - legend$width, unit(0.05, "npc") + legend$width), 
                 nrow=1)
         }, width=1200, height=800)
+        
+        
         
     
         output$tabeldata <- DT::renderDataTable(DT::datatable({
