@@ -27,18 +27,18 @@ library("Contactviz")
 
 The package contains a shiny-app, which can subsequently be run with:
 ```{r run, eval=FALSE}
-runContactviz("Contactviz")
+runContactviz()
 ```
 
 
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
-![](https://github.com/lsoetens/Contactviz/tree/master/Figs/input_tabs.png)
-<img src="input_tabs.png" style="width:650px"/>
+
+<img src="Figs/input_tabs.png" style="width:650px"/>
 
 The first tab 'data upload'  specifies the data requirements. 
 
-<img src="https://github.com/lsoetens/Contactviz/tree/master/Figs/Disease_specific_settings.png" style="width:650px"/>
+<img src="Figs/Disease_specific_settings.png" style="width:650px"/>
 
 The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. It also contains a slider for setting how strict you want to be in following-up contacts. 
 
