@@ -1,0 +1,38 @@
+---
+title: "README"
+author: "Loes Soetens"
+date: "20 juni 2016"
+output: html_document
+---
+
+
+```{r setup, echo=FALSE}
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=7, fig.path="Figs/", cache=FALSE)
+options(digits = 4)
+```
+
+*Contactviz*: visualization of contact tracing data
+=================================================
+*Contactviz* implements new methods for the exploration and analysis of contact tracing data, with taking into account that the data are censored.
+
+
+Installing *Contactviz*
+-------------
+To install the development version from github:
+```{r install, eval=FALSE}
+library(devtools)
+install_github("lsoetens/Contactviz")
+```
+
+
+Then, to load the package, use:
+```{r load}
+library("Contactviz")
+```
+
+The package contains a shiny-app, which can subsequently be run with:
+```{r run, , eval=FALSE}
+runContactviz("Contactviz")
+```
+
