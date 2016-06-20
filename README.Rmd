@@ -8,7 +8,7 @@ output: html_document
 
 ```{r setup, echo=FALSE}
 # set global chunk options: images will be 7x5 inches
-knitr::opts_chunk$set(fig.width=7, fig.height=7, fig.path="https://github.com/lsoetens/Contactviz/tree/master/Figs/", cache=FALSE)
+knitr::opts_chunk$set(fig.width=7, fig.height=7, cache=FALSE)
 options(digits = 4)
 ```
 
@@ -39,7 +39,7 @@ runContactviz("Contactviz")
 
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
-
+![](http://github.com/lsoetens/Contactviz/tree/master/Figs/input_tabs.png)
 <img src="input_tabs.png" style="width:650px"/>
 
 The first tab 'data upload'  specifies the data requirements. 
