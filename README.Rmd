@@ -6,12 +6,6 @@ output: html_document
 ---
 
 
-```{r setup, echo=FALSE}
-# set global chunk options: images will be 7x5 inches
-knitr::opts_chunk$set(fig.width=7, fig.height=7, cache=FALSE)
-options(digits = 4)
-```
-
 *Contactviz*: visualization of contact tracing data
 =================================================
 *Contactviz* implements new methods for the exploration and analysis of contact tracing data, with taking into account that the data are censored.
@@ -32,7 +26,7 @@ library("Contactviz")
 ```
 
 The package contains a shiny-app, which can subsequently be run with:
-```{r run, , eval=FALSE}
+```{r run, eval=FALSE}
 runContactviz("Contactviz")
 ```
 
