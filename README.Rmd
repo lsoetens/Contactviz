@@ -44,7 +44,7 @@ The shiny-app `Contactviz` is  available via a user-friendly web interface, runn
 
 The first tab 'data upload'  specifies the data requirements. 
 
-<img src="Figs/Disease_specific_settings.png" style="width:650px"/>
+<img src="https://github.com/lsoetens/Contactviz/tree/master/Figs/Disease_specific_settings.png" style="width:650px"/>
 
 The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. It also contains a slider for setting how strict you want to be in following-up contacts. 
 
