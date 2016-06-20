@@ -34,19 +34,19 @@ runContactviz()
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/input_tabs.PNG)
+![data](https://github.com/lsoetens/Contactviz/blob/master/Figs/input_tabs.PNG)
 
 
 The first tab 'data upload'  specifies the data requirements. 
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Figs/Disease_specific_settings.PNG)
+![disease](https://github.com/lsoetens/Contactviz/blob/master/Figs/Disease_specific_settings.PNG)
 
 
 The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. It also contains a slider for setting how strict you want to be in following-up contacts. 
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Figs/Outbreak_specific_settings.PNG)
+![outbreak](https://github.com/lsoetens/Contactviz/blob/master/Figs/Outbreak_specific_settings.PNG)
 
 
 The third tab is on outbreak specific settings. The data of analysis should be specified, and there is the option of marking important dates in the outbreak.
@@ -54,7 +54,7 @@ The third tab is on outbreak specific settings. The data of analysis should be s
 After uploading the data and setting the specific settings, a plot is shown at the bottom of the screen.
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Figs/Plot_output.PNG)
+![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Plot_output.PNG)
 
 
 This plot is the main output. It contains a time-oriented network of all cases (squares and diamonds) and contacts still in follow-up (horizontal bars); the evolution of Rt during the outbreak; an epicurve; and the estimations of the attack rates for various exposure routes.
@@ -62,5 +62,5 @@ This plot is the main output. It contains a time-oriented network of all cases (
 Next to this plot, the data itself can also be viewed in the other output- tab.
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Figs/Plot_data_table.PNG)
+![table](https://github.com/lsoetens/Contactviz/blob/master/Figs/Plot_data_table.PNG)
 
