@@ -39,5 +39,24 @@ runContactviz("Contactviz")
 
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
-<img src="Figs/input_tabs.png" style="width:650px"/>
+<img src="input_tabs.png" style="width:650px"/>
 
+The first tab 'data upload'  specifies the data requirements. 
+
+<img src="Figs/Disease_specific_settings.png" style="width:650px"/>
+
+The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. It also contains a slider for setting how strict you want to be in following-up contacts. 
+
+<img src="Figs/Outbreak_specific_settings.png" style="width:650px"/>
+
+The third tab is on outbreak specific settings. The data of analysis should be specified, and there is the option of marking important dates in the outbreak.
+
+After uploading the data and setting the specific settings, a plot is shown at the bottom of the screen.
+
+<img src="Figs/Plot_output.png" style="width:650px"/>
+
+This plot is the main output. It contains a time-oriented network of all cases (squares and diamonds) and contacts still in follow-up (horizontal bars); the evolution of Rt during the outbreak; an epicurve; and the estimations of the attack rates for various exposure routes.
+
+Next to this plot, the data itself can also be viewed in the other output- tab.
+
+<img src="Figs/Plot_data_table.png" style="width:650px"/>
