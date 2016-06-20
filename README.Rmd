@@ -4,9 +4,7 @@ author: "Loes Soetens"
 date: "20 juni 2016"
 output: html_document
 ---
-```{r wd, echo=FALSE}
-setwd("R:/EPI/MOD/Projects/EW_GIS_CIb_Datavisualisatie/Work-data_scripts_programs/5_Complexe_time_type_place_person_data/Contact_tracing_information/Scripts/Contactviz")
-```
+
 
 ```{r setup, echo=FALSE}
 # set global chunk options: images will be 7x5 inches
@@ -40,6 +38,9 @@ runContactviz("Contactviz")
 
 
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
+
+![](Figs/input_tabs.png)
+
 
 <img src="Figs/input_tabs.png" style="width:650px"/>
 
