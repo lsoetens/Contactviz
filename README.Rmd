@@ -33,7 +33,7 @@ runContactviz()
 
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
-![input_tabs](lcsoetens.github.com/Contactviz/Figs/input_tabs.png)
+![input_tabs](lcsoetens.github.com/Contactviz/Figs/input_tabs.PNG)
 
 <img src="Figs/input_tabs.png" style="width:650px"/>
 
