@@ -1,12 +1,12 @@
 library(shiny)
 
-# Define UI for application that plots random distributions 
+# Define UI for application that plots random distributions
 shinyUI(fluidPage(
-        
+
         titlePanel(h1("Contact tracing overview tool")),
         br(),
         br(),
-        
+
         tabsetPanel(type=c("tabs"),
                 tabPanel(h4("Data upload"),
                         fluidRow(
@@ -25,13 +25,13 @@ shinyUI(fluidPage(
                                         p(strong("- Exposure_duration"),": duration of contact between case and contact (in days)"),
                                         p(strong("- Exposure_type"),": type of contact (in categories, no more than 7)"),
                                         br(),
-                                        p("The order of the columns as well as the presence of additional columns is not important.")      
+                                        p("The order of the columns as well as the presence of additional columns is not important.")
                                 ),
                                 column(4,
                                         br(),
                                 fileInput('file1', 'Choose CSV File',
-                                        accept=c('text/csv', 
-                                        'text/comma-separated-values,text/plain', 
+                                        accept=c('text/csv',
+                                        'text/comma-separated-values,text/plain',
                                         '.csv')),
                                 tags$hr(),
                                 checkboxInput('header', 'Header', TRUE),
@@ -40,7 +40,7 @@ shinyUI(fluidPage(
                                 )
                         )
                         ),
-                tabPanel(h4("Disease specific settings"), 
+                tabPanel(h4("Disease specific settings"),
                         fluidRow(
                                 column(4,
                                         br(),
@@ -55,50 +55,46 @@ shinyUI(fluidPage(
                                 ),
                                 column(4,
                                         br(),
-                                        sliderInput("surveillance", label = "Percentage of the probability on developing symptoms the surveillance period 
+                                        sliderInput("surveillance", label = "Percentage of the probability on developing symptoms the surveillance period
                                                 should cover:", min=0, max=100, value= 90)
                                 )
                         )
-                        ), 
-                tabPanel(h4("Outbreak specific settings"), 
+                        ),
+                tabPanel(h4("Outbreak specific settings"),
                         fluidRow(
                                 column(4,
                                         br(),
                                         textInput("country", label = "Country/region of outbreak", value = "The Netherlands"),
-                                        dateInput("currentdate", label = "Current date (yyyy-mm-dd)", value = "1951-05-30")
+                                        dateInput("currentdate", label = "Current date (yyyy-mm-dd)", value = "2015-05-30")
                                 ),
-                                column(4, 
+                                column(4,
                                         br(),
                                         h5(strong("Important dates for annotation of the plot:")),
-                                        dateInput("date1", label = "Important date 1 (yyyy-mm-dd)", value = "1951/04/24"),
+                                        dateInput("date1", label = "Important date 1 (yyyy-mm-dd)", value = "2015-04-01"),
                                         textInput("date1label", label = "Label date 1", value = "Outbreak detected"),
-                                        dateInput("date2", label = "Important date 2 (yyyy-mm-dd)", value = "1951/04/29"),
+                                        dateInput("date2", label = "Important date 2 (yyyy-mm-dd)", value = "2015-04-10"),
                                         textInput("date2label", label = "Label date 2", value = "Control measures")
                                         )
                         )
                         )
                 ),
-        
+
         hr(),
-        
+
         submitButton("Show output"),
-        
+
         hr(),
-        
+
         tabsetPanel(type=c("tabs"),
                 tabPanel(h4("Plot"),
                         br(),
-                        plotOutput("plotcontacttrace", width=1200, height=800)#,
-                        # radioButtons("var3", label= "Select the file type for download", 
-                        #         choices= list("png", "pdf")),
-                        # downloadButton("down", label = "Download the plot"),
-                        # br()
-                ),
+                        plotOutput("plotcontacttrace", width=1200, height=800)
+                        ),
                 tabPanel(h4("Data tabel"),
                         br(),
                         DT::dataTableOutput("tabeldata")
                         )
         )
-        
+
         )
 )

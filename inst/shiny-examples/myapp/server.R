@@ -13,13 +13,14 @@ library(binom)
 library(Hmisc)
 library(boot)
 library(RColorBrewer)
-
-#read data
-#setwd("R:/EPI/MOD/Projects/EW_GIS_CIb_Datavisualisatie/Work-data_scripts_programs/5_Complexe_time_type_place_person_data/Contact_tracing_information/")
+library(reshape2)
 
 
-# Define server logic required to generate and plot a random distribution
+
+
 shinyServer(function(input, output) {
+
+        ranges <- reactiveValues(x = NULL, y = NULL)
 
         output$plotcontacttrace <- renderPlot({
 
@@ -72,65 +73,77 @@ shinyServer(function(input, output) {
         probhigh<- 1-(((100-surveillance)/2)/100)
 
 
+        #set all character-variables to lower case
+        data$Type<- tolower(data$Type)
+        data$Exposure_type<- tolower(data$Exposure_type)
+        data$Gender<- tolower(data$Gender)
+        names(data)<- tolower(names(data))
+
+
         #create some new variables and do some formatting
         data<- within (data, {
-                date_onset_disease<- as.Date(DOD, format="%Y-%m-%d")
-                date_exposure<- as.Date(Exposure_date, format="%Y-%m-%d")
-                Gender<- factor(Gender, levels= c("man", "woman", "unknown"), ordered=TRUE)
-                Exposure_type<- factor(Exposure_type, levels=c("Family/Household", "Friend/neighbor", "Medical/Religious","Work", "Bar/Shop", ""))
+          id2<- as.character(id)
+          idsource2<- as.character(idsource)
+          date_onset_disease<- as.Date(dod, format="%Y-%m-%d")
+          date_exposure<- as.Date(exposure_date, format="%Y-%m-%d")
+          gender<- factor(gender, levels= sort(unique(gender)), ordered=TRUE)
+          exposure_type<- factor(exposure_type, levels= sort(unique(exposure_type)))
         }
         )
 
+        data$id<- data$id2
+        data$idsource<- data$idsource2
+
 
         #Remove cases and their contacts if dod of case is after currentdate and exposure type is unknown
-        idselect<- data$ID[data$date_onset_disease> currentdate & data$Exposure_type==""]
-        data<- subset(data, !(data$ID %in% idselect) & !(data$IDSource %in% idselect))
+        #idselect<- data$id[data$type == "case" & data$date_onset_disease> currentdate]
+        #data<- subset(data, !(data$id %in% idselect) & !(data$idsource %in% idselect))
 
-        #set cases diagnosed after the currentdate as controls
-        idselect<- data$ID[data$Type=="Case" & data$date_onset_disease > currentdate]
-        data<- subset(data, !(data$IDSource %in% idselect))
-        data$Type<- ifelse(data$ID %in% idselect, "Contact", data$Type)
+        #set cases diagnosed after the currentdate as controls and remove their contacts
+        idselect<- data$id[data$type=="case" & data$date_onset_disease > currentdate]
+        data<- subset(data, !(data$idsource %in% idselect))
+        data$type<- ifelse(data$id %in% idselect, "contact", data$type)
 
+        #| data$idsource=="NA"  & (data$exposure_type=="")
 
         #########################
         #calculate Feff for every contact
 
         #first select contacts
-        data2<- subset(data, (data$Type== "Contact"))
+        data2<- subset(data, type== "contact")
 
 
         #create function for creating convolution of exposure interval and incubation period distribution
+        #function returns distribution for every contact
         convolution<- function(expdate, expduration, nsim){
-                set.seed(200)
-                x<- expdate + runif(nsim, min=0, max= expduration)+ rlnorm(nsim, log(incubationperiod), log(incubationsd))
-                return(x)
+          set.seed(200)
+          x<- expdate + runif(nsim, min=0, max= expduration)+ rlnorm(nsim, log(incubationperiod), log(incubationsd))
+          return(x)
         }
 
         #returns a matrix, with in every column the simulated dates for one contact
-        simdates<- mapply(convolution, expdate= data2[,"date_exposure"], expduration= data2[,"Exposure_duration"], nsim=10000 )
-
+        simdates<- mapply(convolution, expdate= data2[,"date_exposure"], expduration= data2[,"exposure_duration"], nsim=10000 )
 
         #apply ecdf function to every column in simdates
         cumsim<- apply(simdates, 2, ecdf)
 
 
         #calculate cum. probability (and 1- prob) for certain date for every column
-        arglist<- as.list(c(rep(as.numeric(currentdate), length(data2[, "ID"]))))
-        prob<- mapply(function(x,y) x(y), x= cumsim, y=arglist) #Feff
+        arglist<- as.list(c(rep(as.numeric(currentdate), length(data2[, "id"]))))
+        prob<- mapply(function(x,y) x(y), x= cumsim, y=arglist) #feff
         probsymp<- round(1-prob,6) #Seff
         date05<- as.Date(round(as.numeric(apply(simdates, 2, quantile, prob=problow))),origin = "1970-01-01")
         date95<- as.Date(round(as.numeric(apply(simdates, 2, quantile, prob=probhigh))),origin = "1970-01-01")
 
 
         #attach the calculated probabilities to original dataframe
-        data3<- data.frame(ID=data2$ID, prob= prob, probsymp=probsymp, date05= date05, date95= date95)
-        data<- merge(data, data3, by="ID", all=T)
-
+        data3<- data.frame(id=data2$id, prob= prob, probsymp=probsymp, date05= date05, date95= date95)
+        data<- merge(data, data3, by="id", all=T)
 
         # make a graphdate, which corresponds to the 1st day of symptom onset for cases,
         # and to the lower 5% of the symptom onset interval for contacts
         data<- within (data, {
-          graphdate<- ifelse(Type=="Case", date_onset_disease, date05)
+          graphdate<- ifelse(type=="case", date_onset_disease, date05)
           graphdate<- as.Date(graphdate, origin = "1970-01-01")
         })
 
@@ -139,189 +152,285 @@ shinyServer(function(input, output) {
         #########################################
         #MLE for probability on infection for every contact type
 
-        LE<- function(ns, na, Feff, pi){
-          x<- ns*log10(pi)+ na*log10(1-pi) + sum(log10(1-pi*Feff))
+        LE<- function(ns, na, feff, pi){
+          x<- ns*log10(pi)+ na*log10(1-pi) + sum(log10(1-pi*feff))
           return(x)
         }
 
-        AR<- c()
-        ARlo<- c()
-        ARhi<- c()
-        Exposure_type<- c()
+        ar<- c()
+        arlo<- c()
+        arhi<- c()
+        exposure_type<- c()
         ntotal<- c()
-        for(i in 1: length(unique(data$Exposure_type))){
-          test<- subset(data, Exposure_type== unique(data$Exposure_type)[i])
-          Exposure_type<- c(append(Exposure_type, as.character(unique(test$Exposure_type)), after=length(Exposure_type)))
-          ntotal<- c(append(ntotal, length(test$Exposure_type), after=length(ntotal)))
-          if (length(test$Exposure_type)> 5){
+        for(i in 1: length(unique(data$exposure_type))){
+          test<- subset(data, exposure_type== unique(data$exposure_type)[i])
+          exposure_type<- c(append(exposure_type, as.character(unique(test$exposure_type)), after=length(exposure_type)))
+          ntotal<- c(append(ntotal, length(test$exposure_type), after=length(ntotal)))
+          if (length(test$exposure_type)> 5){
 
-            ns<- length(test$Type[test$Type== "Case"]) #number of cases
-            na<- length(test$Type[test$Type=="Contact" & test$probsymp< 0.05]) #number of contacts no symptoms in surveillance period
+            ns<- length(test$type[test$type== "case"]) #number of cases
+            na<- length(test$type[test$type=="contact" & test$probsymp< problow]) #number of contacts no symptoms in surveillance period
             pi<- c()
             ll<- c()
             for (j in 1:1000){
               PI<- j/1000
-              LL<- LE(ns=ns, na=na, Feff=test$prob[test$Type=="Contact" & test$probsymp> 0.049], pi=PI)
+              LL<- LE(ns=ns, na=na, feff=test$prob[test$type=="contact" & test$probsymp>= problow], pi=PI)
               pi<- c(append(pi, PI, after=length(pi)))
               ll<- c(append(ll, LL, after=length(ll)))
             }
-            MLE.df<- data.frame(pi= pi, ll=ll)
-            maxll<- MLE.df$pi[MLE.df$ll == max(MLE.df$ll)] #maxLL
-            MLE.df$dev<- 2*(max(MLE.df$ll)-MLE.df$ll)
-            lllow<- MLE.df$pi[which(MLE.df$dev < 3.841)[1]] #lower CI MAXLL
-            llhi<- MLE.df$pi[which(MLE.df$dev < 3.841)[length(which(MLE.df$dev < 3.841))]] #higher CI MaxLL
-            AR<- c(append(AR, maxll, after=length(AR)))
-            ARlo<- c(append(ARlo, lllow, after=length(ARlo)))
-            ARhi<- c(append(ARhi, llhi, after=length(ARhi)))
+            mle.df<- data.frame(pi= pi, ll=ll)
+            maxll<- mle.df$pi[mle.df$ll == max(mle.df$ll)] #maxLL
+            mle.df$dev<- 2*(max(mle.df$ll)-mle.df$ll)
+            lllow<- mle.df$pi[which(mle.df$dev < 3.841)[1]] #lower CI MAXLL
+            llhi<- mle.df$pi[which(mle.df$dev < 3.841)[length(which(mle.df$dev < 3.841))]] #higher CI MaxLL
+            ar<- c(append(ar, maxll, after=length(ar)))
+            arlo<- c(append(arlo, lllow, after=length(arlo)))
+            arhi<- c(append(arhi, llhi, after=length(arhi)))
           }
           else {
-
-            ns<- length(data$Type[data$Type== "Case"]) #number of cases
-            na<- length(data$Type[data$Type=="Contact" & data$probsymp< 0.05]) #number of contacts no symptoms in surveillance period
+            ns<- length(data$type[data$type== "case"]) #number of cases
+            na<- length(data$type[data$type=="contact" & data$probsymp< problow]) #number of contacts no symptoms in surveillance period
             pi<- c()
             ll<- c()
             for (j in 1:1000){
               PI<- j/1000
-              LL<- LE(ns=ns, na=na, Feff=data$prob[data$Type=="Contact" & data$probsymp> 0.049], pi=PI)
+              LL<- LE(ns=ns, na=na, feff=data$prob[data$type=="contact" & data$probsymp>= problow], pi=PI)
               pi<- c(append(pi, PI, after=length(pi)))
               ll<- c(append(ll, LL, after=length(ll)))
             }
-            MLE.df<- data.frame(pi= pi, ll=ll)
-            maxll<- MLE.df$pi[MLE.df$ll == max(MLE.df$ll)] #maxLL
-            MLE.df$dev<- 2*(max(MLE.df$ll)-MLE.df$ll)
-            lllow<- MLE.df$pi[which(MLE.df$dev < 3.841)[1]] #lower CI MAXLL
-            llhi<- MLE.df$pi[which(MLE.df$dev < 3.841)[length(which(MLE.df$dev < 3.841))]] #higher CI MaxLL
-            AR<- c(append(AR, maxll, after=length(AR)))
-            ARlo<- c(append(ARlo, lllow, after=length(ARlo)))
-            ARhi<- c(append(ARhi, llhi, after=length(ARhi)))
+            mle.df<- data.frame(pi= pi, ll=ll)
+            maxll<- mle.df$pi[mle.df$ll == max(mle.df$ll)] #maxLL
+            mle.df$dev<- 2*(max(mle.df$ll)-mle.df$ll)
+            lllow<- mle.df$pi[which(mle.df$dev < 3.841)[1]] #lower CI MAXLL
+            llhi<- mle.df$pi[which(mle.df$dev < 3.841)[length(which(mle.df$dev < 3.841))]] #higher CI MaxLL
+            ar<- c(append(ar, maxll, after=length(ar)))
+            arlo<- c(append(arlo, lllow, after=length(arlo)))
+            arhi<- c(append(arhi, llhi, after=length(arhi)))
           }
         }
 
-        ARdf<- data.frame(Exposure_type=Exposure_type, AR=AR, ARlo=ARlo, ARhi=ARhi, ntotal=ntotal)
-        ARdf_5total<- subset(ARdf, ntotal>= 5)
+        ardf<- data.frame(exposure_type=exposure_type, ar=ar, arlo=arlo, arhi=arhi, ntotal=ntotal)
+        ardf_5total<- subset(ardf, ntotal>= 5)
+
 
         #################################################
         #Calculate probability on infection for a contact of type x that has not developed symptoms up to time t
 
-        data<-merge(data, ARdf, by="Exposure_type", all.x=T)
+        data<-merge(data, ardf, by="exposure_type", all.x=T)
 
-        data$probinf<- (data$AR*data$probsymp)/(1-data$AR*data$prob)
-        data$probinf<- ifelse(data$Type=="Case", 1, data$probinf)
+        data$probinf<- (data$ar*data$probsymp)/(1-data$ar*data$prob)
+        data$probinf<- ifelse(data$type=="case", 1, data$probinf)
 
 
 
         #################################################
         # Calculate reproduction number
 
-        # Calculate reproduction number
 
+        #first calculate the first component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
 
-        #first calculate the first component for all cases: add over the number of contacts of that case and wigh each contact by their probability of being infected
-
-        rcase<- tapply(X=data$probinf, INDEX=data$IDSource, FUN=sum, simplify=T)
-        rcase<- data.frame(ID=rownames(rcase), rcase=rcase)
+        rcase<- tapply(X=data$probinf, INDEX=data$idsource, FUN=sum, simplify=T)
+        rcase2<- tapply(X=data$probinf[data$probinf> 0], INDEX=data$idsource[data$probinf>0], FUN= list)
+        list_rcrude<- tapply(X=data$probinf[data$probinf== 1], INDEX=data$idsource[data$probinf== 1], FUN= list)
+        rcase<- data.frame(id=rownames(rcase), rcase=rcase)
         row.names(rcase) <- NULL
-        data<- merge(data, rcase, by="ID", all.x=T)
+        data<- merge(data, rcase, by="id", all.x=T)
 
         #next calculate the second component for orphan cases: add over the number of orphans and weigh each by their probability of being infected with case j
 
-        orphans<-subset(data, is.na(data$IDSource))
+        orphans<-subset(data, is.na(data$idsource))
 
-        cases<- subset(data, Type=="Case")
-        for (i in 1: length(orphans$ID)){
-          days<- as.numeric(as.Date(orphans$DOD[i])- as.Date(cases$DOD))
-          orphan<- round(dgamma(days, generationtime, 1), 2)
+        cases<- subset(data, type=="case")
+        for (i in 1: length(orphans$id)){
+          days<- as.numeric(as.Date(orphans$dod[i])- as.Date(cases$dod))
+          orphan<- round(dgamma(days, 17.7, 1), 2)
           proborphan<- round(orphan/sum(orphan),2)
-          dftemp<- data.frame(ID= cases$ID, proborphan=proborphan)
+          dftemp<- data.frame(id= cases$id, proborphan=proborphan)
           dftemp$proborphan<- ifelse(is.na(dftemp$proborphan), 0, dftemp$proborphan)
           dftemp$proborphan<- ifelse(is.nan(dftemp$proborphan), 0, dftemp$proborphan)
-          colnames(dftemp)<- c("ID", paste("proborphan", i, sep="_"))
-          data<- merge(data, dftemp, by="ID", all.x=T)
+          colnames(dftemp)<- c("id", paste("proborphan", i, sep="_"))
+          data<- merge(data, dftemp, by="id", all.x=T)
         }
-
-
-        if (length(orphans$ID)==0){
-          data$nsecondary<- round(data$rcase, 2)
-        }
-        if (length(orphans$ID)==1){
-          data$nsecondary<- round(data$rcase + data$proborphan_1, 2)
-        }
-        if (length(orphans$ID)>1){
-          sumproborphan<- rowSums(data[,(length(data)-(length(orphans$ID)-1)):length(data)], na.rm=T)
-          data<- cbind(data, sumproborphan)
-          data$nsecondary<- round(data$rcase + sumproborphan, 2)
-        }
-
-        data$nsecondary<- ifelse(is.na(data$nsecondary) & data$Type=="Case", 0, data$nsecondary)
-
-        #apply moving average for plotting
-        ma_dates<- data.frame(graphdate=data$graphdate[data$Type=="Case"], nsecondary= data$nsecondary[data$Type=="Case"])
-        alldates<- data.frame(graphdate=c(seq(min(cases$graphdate),  max(data$date95, na.rm=T), by=1)))
-        ma.dataframe<- merge(alldates, ma_dates, by="graphdate", all=T)
-        alldates2<- data.frame(graphdate=c(seq(min(cases$graphdate),  currentdate, by=1)))
 
         mean<- c()
-        sd<- c()
         nsample<- c()
-        for (i in 1: length(alldates2$graphdate)){
-          if (i<= generationtime) {
-            temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[1] & graphdate <= alldates2$graphdate[i]))
-          } else {
-            temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[i-generationtime] & graphdate <= alldates2$graphdate[i-1]))
-          }
-          mean<- c(append(mean, mean(temp.dataframe$nsecondary, na.rm=T), after=length(mean)))
-          sd<- c(append(sd, sd(temp.dataframe$nsecondary, na.rm=T), after=length(sd)))
-          nsample<- c(append(nsample, sum(complete.cases(temp.dataframe)), after=length(nsample)))
+        lower.ci<- c()
+        upper.ci<- c()
+
+        alldates<- c(seq(min(cases$graphdate),  currentdate, by=1))
+
+        flip.function<- function(k){
+          n= length(k)
+          p= k
+          rbinom(n, 1, p)
         }
 
-        ma.dataframe2<- data.frame(graphdate= alldates2$graphdate, ma=mean, sd=sd, n=nsample)
-        ma.dataframe2<- merge(alldates, ma.dataframe2, by="graphdate", all.x=T)
-        ma.dataframe2$lowerexact<- (qchisq(0.025, 2*ma.dataframe2$ma* ma.dataframe2$n)/2)/ma.dataframe2$n  #exact ma
-        ma.dataframe2$upperexact<- (qchisq(0.975, 2*(ma.dataframe2$ma* ma.dataframe2$n+1))/2)/ma.dataframe2$n  #exact ma
-        maxexact2<- max(ma.dataframe2$upperexact, na.rm=T) #for plotting, max y-axis
-        ma.dataframe2$upperexact[ma.dataframe2$n <= 1]<- Inf
-        ma.dataframe2$lowerexact[ma.dataframe2$n <= 1]<- -Inf
-        ma.dataframe2$SEM<- ma.dataframe2$sd/sqrt(ma.dataframe2$n)
-        ma.dataframe2$lowerSEM<- ma.dataframe2$ma - ma.dataframe2$SEM
-        ma.dataframe2$higherSEM<- ma.dataframe2$ma + ma.dataframe2$SEM
-        ma.dataframe2$lowerSEM[ma.dataframe2$n <= 1]<- Inf
-        ma.dataframe2$higherSEM[ma.dataframe2$n <= 1]<- -Inf
-        maxsEM<- max(ma.dataframe2$higherSEM, na.rm=T) #for plotting, max y-axis
+        for (i in 1: length(alldates)){
+          if (i<= generationtime) {
+            temp.dataframe<- subset(data, subset= (graphdate >= alldates[1] & graphdate <= alldates[i]))
+          } else {
+            temp.dataframe<- subset(data, subset= (graphdate >= alldates[i-generationtime] & graphdate <= alldates[i-1]))
+          }
+          # estimate R(t)
+          id_temp<- temp.dataframe$id
+          list_rcase<- rcase2[names(rcase2) %in% id_temp]
+          orphandf<- temp.dataframe[, c(which(substr(colnames(temp.dataframe), 1, 10)== "proborphan"),  which(colnames(temp.dataframe)=="id"))]
+          orphandf<- melt(orphandf, id.vars=c("id"))
+          # remove NA's and zero probabilities
+          orphandf$value<- ifelse(orphandf$value == 0, NA, orphandf$value)
+          orphandf<- na.omit(orphandf)
+          if (nrow(orphandf) >= 1){
+            list_orphan <- tapply(X=orphandf$value, INDEX=orphandf$id, FUN=list)
+            # merge the two lists
+            both <- list(list_rcase, list_orphan)
+            n <- unique(unlist(lapply(both, names)))
+            names(n) <- n
+            list_rcase_orphan<- lapply(n, function(ni) unlist(lapply(both, `[[`, ni)))
+          } else {
+            list_rcase_orphan<- list_rcase
+          }
+          # number of secondary cases per case
+          list_rcase_orphan_sum<- unlist(lapply(list_rcase_orphan, FUN= sum))
+          # add zero secondary cases for those with no secondary cases
+          id_nosec<- c(data$id[!(data$id %in% data$idsource) & data$type == "case"])
+          id_nosec_temp<- temp.dataframe$id[temp.dataframe$id %in% id_nosec]
+          id_nosec_temp<- id_nosec_temp[!(id_nosec_temp %in% names(list_rcase_orphan_sum))]
+          list_rcase_orphan_sum<- c(list_rcase_orphan_sum, rep(0, length(id_nosec_temp)))
+          # R(t)
+          mean<- c(append(mean, mean(list_rcase_orphan_sum, na.rm = T), after = length(mean)))
+          # estimating the 95% CI around R(t)
+          mean_rcase<- c()
+          for (i in 1:1000){
+            x<- i
+            # step 1: for every possible secondary case, draw if it is going to be a case or not
+            sample_rcase<- lapply(list_rcase_orphan, FUN= flip.function)
+            # sum total number of secondary cases per case
+            sum_rcase<- lapply(sample_rcase, FUN= sum)
+            sum_rcase_unlist<- unlist(sum_rcase)
+            # add zero secondary cases for those with no secondary cases
+            id_nosec_temp<- temp.dataframe$id[temp.dataframe$id %in% id_nosec]
+            id_nosec_temp<- id_nosec_temp[!(id_nosec_temp %in% names(sum_rcase_unlist))]
+            sum_rcase_unlist<- c(sum_rcase_unlist, rep(0, length(id_nosec_temp)))
+            # estimate mean from sample
+            mean_rcase<- c(append(mean_rcase, mean(sum_rcase_unlist), after = length(mean_rcase)))
+          }
+          # determine 95% CI from sample means
+          lower.ci<- c(append(lower.ci, quantile(mean_rcase, probs = c(0.025), na.rm = T), after = length(lower.ci)))
+          upper.ci<- c(append(upper.ci, quantile(mean_rcase, probs = c(0.975), na.rm = T), after = length(upper.ci)))
+        }
 
-        ma.dataframe2<- subset(ma.dataframe2, graphdate <= currentdate)
+        ma.dataframe<- data.frame(graphdate= alldates, rt= mean, lower.ci= lower.ci, upper.ci = upper.ci)
+        alldates<- data.frame(graphdate= alldates)
+        ma.dataframe2<- merge(alldates, ma.dataframe, by="graphdate", all.x=T)
 
-        #Calculate Rt for specific time periods
-        #calculate mean R0 before case detected
-        casedetect<- subset(data, graphdate <= outbreakdetect & Type=="Case")
-        #leave out first case
-        casedetect<- arrange(casedetect, DOD)
-        casedetect = casedetect[-1,]
-        r.casedetect<- mean(casedetect$nsecondary, na.rm=T)
-        ndetect<- length(casedetect$nsecondary)
-        sddetect<- sd(casedetect$nsecondary, na.rm=T)
-        lowerdetect<- (qchisq(0.025, 2*r.casedetect* ndetect)/2)/ndetect  #exact method poisson
-        upperdetect<- (qchisq(0.975, 2*(r.casedetect* ndetect+1))/2)/ndetect  #exact method poisson
-        lowerdetectSEM<- r.casedetect - (sddetect/sqrt(ndetect))
-        upperdetectSEM<- r.casedetect + (sddetect/sqrt(ndetect))
-
-        #calculate mean R0 after implementation control measures
-        caseafter<- subset(data, graphdate >= controlstart & Type=="Case")
-        #remove last case
-        caseafter<- arrange(caseafter, desc(DOD))
-        caseafter = caseafter[-1,]
-        r.caseafter<- mean(caseafter$nsecondary, na.rm=T)
-        ncaseafter<- length(caseafter$nsecondary)
-        sdcaseafter<- sd(caseafter$nsecondary, na.rm=T)
-        lowercaseafter<- (qchisq(0.025, 2*r.caseafter* ncaseafter)/2)/ncaseafter  #exact method poisson
-        uppercaseafter<- (qchisq(0.975, 2*(r.caseafter* ncaseafter+1))/2)/ncaseafter  #exact method poisson
-        lowercaseafterSEM<- r.caseafter - (sdcaseafter/sqrt(ncaseafter))
-        uppercaseafterSEM<- r.caseafter + (sdcaseafter/sqrt(ncaseafter))
+        # # Calculate reproduction number
+        #
+        #
+        # #first calculate the first component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
+        #
+        # rcase<- tapply(X=data$probinf, INDEX=data$idsource, FUN=sum, simplify=T)
+        # rcase<- data.frame(id=rownames(rcase), rcase=rcase)
+        # row.names(rcase) <- NULL
+        # data<- merge(data, rcase, by="id", all.x=T)
+        #
+        # #next calculate the second component for orphan cases: add over the number of orphans and weigh each by their probability of being infected with case j
+        #
+        # orphans<-subset(data, is.na(data$idsource))
+        #
+        # cases<- subset(data, type=="case")
+        # for (i in 1: length(orphans$id)){
+        #   days<- as.numeric(as.Date(orphans$dod[i])- as.Date(cases$dod))
+        #   orphan<- round(dgamma(days, 17.7, 1), 2)
+        #   proborphan<- round(orphan/sum(orphan),2)
+        #   dftemp<- data.frame(id= cases$id, proborphan=proborphan)
+        #   dftemp$proborphan<- ifelse(is.na(dftemp$proborphan), 0, dftemp$proborphan)
+        #   dftemp$proborphan<- ifelse(is.nan(dftemp$proborphan), 0, dftemp$proborphan)
+        #   colnames(dftemp)<- c("id", paste("proborphan", i, sep="_"))
+        #   data<- merge(data, dftemp, by="id", all.x=T)
+        # }
+        #
+        # if (length(orphans$id)==0){
+        #   data$nsecondary<- round(data$rcase, 2)
+        # }
+        # if (length(orphans$id)==1){
+        #   data$nsecondary<- round(data$rcase + data$proborphan_1, 2)
+        # }
+        # if (length(orphans$id)>1){
+        #   sumproborphan<- rowSums(data[,(length(data)-(length(orphans$id)-1)):length(data)], na.rm=T)
+        #   data<- cbind(data, sumproborphan)
+        #   data$nsecondary<- round(data$rcase + sumproborphan, 2)
+        # }
+        #
+        # data$nsecondary<- ifelse(is.na(data$nsecondary) & data$type=="case", 0, data$nsecondary)
+        #
+        # #apply moving average for plotting
+        # ma_dates<- data.frame(graphdate=data$graphdate[data$type=="case"], nsecondary= data$nsecondary[data$type=="case"])
+        # alldates<- data.frame(graphdate=c(seq(min(cases$graphdate),  max(data$date95, na.rm=T), by=1)))
+        # ma.dataframe<- merge(alldates, ma_dates, by="graphdate", all=T)
+        # alldates2<- data.frame(graphdate=c(seq(min(cases$graphdate),  currentdate, by=1)))
+        #
+        # mean<- c()
+        # sd<- c()
+        # nsample<- c()
+        # for (i in 1: length(alldates2$graphdate)){
+        #   if (i<= generationtime) {
+        #     temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[1] & graphdate <= alldates2$graphdate[i]))
+        #   } else {
+        #     temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[i-generationtime] & graphdate <= alldates2$graphdate[i-1]))
+        #   }
+        #   mean<- c(append(mean, mean(temp.dataframe$nsecondary, na.rm=T), after=length(mean)))
+        #   sd<- c(append(sd, sd(temp.dataframe$nsecondary, na.rm=T), after=length(sd)))
+        #   nsample<- c(append(nsample, sum(complete.cases(temp.dataframe)), after=length(nsample)))
+        # }
+        #
+        # ma.dataframe2<- data.frame(graphdate= alldates2$graphdate, ma=mean, sd=sd, n=nsample)
+        # ma.dataframe2<- merge(alldates, ma.dataframe2, by="graphdate", all.x=T)
+        # ma.dataframe2$lowerexact<- (qchisq(0.025, 2*ma.dataframe2$ma* ma.dataframe2$n)/2)/ma.dataframe2$n  #exact ma
+        # ma.dataframe2$upperexact<- (qchisq(0.975, 2*(ma.dataframe2$ma* ma.dataframe2$n+1))/2)/ma.dataframe2$n  #exact ma
+        # maxexact2<- max(ma.dataframe2$upperexact, na.rm=T) #for plotting, max y-axis
+        # ma.dataframe2$upperexact[ma.dataframe2$n <= 1]<- Inf
+        # ma.dataframe2$lowerexact[ma.dataframe2$n <= 1]<- -Inf
+        # ma.dataframe2$sem<- ma.dataframe2$sd/sqrt(ma.dataframe2$n)
+        # ma.dataframe2$lowersem<- ma.dataframe2$ma - ma.dataframe2$sem
+        # ma.dataframe2$highersem<- ma.dataframe2$ma + ma.dataframe2$sem
+        # ma.dataframe2$lowersem[ma.dataframe2$n <= 1]<- Inf
+        # ma.dataframe2$highersem[ma.dataframe2$n <= 1]<- -Inf
+        # maxsem<- max(ma.dataframe2$highersem, na.rm=T) #for plotting, max y-axis
+        #
+        # ma.dataframe2<- subset(ma.dataframe2, graphdate <= currentdate)
+        #
+        # #Calculate Rt for specific time periods
+        # #calculate mean R0 before case detected
+        # casedetect<- subset(data, graphdate <= outbreakdetect & type=="case")
+        # #leave out first case
+        # casedetect<- arrange(casedetect, dod)
+        # casedetect = casedetect[-1,]
+        # r.casedetect<- mean(casedetect$nsecondary, na.rm=T)
+        # ndetect<- length(casedetect$nsecondary)
+        # sddetect<- sd(casedetect$nsecondary, na.rm=T)
+        # lowerdetect<- (qchisq(0.025, 2*r.casedetect* ndetect)/2)/ndetect  #exact method poisson
+        # upperdetect<- (qchisq(0.975, 2*(r.casedetect* ndetect+1))/2)/ndetect  #exact method poisson
+        # lowerdetectsem<- r.casedetect - (sddetect/sqrt(ndetect))
+        # upperdetectsem<- r.casedetect + (sddetect/sqrt(ndetect))
+        #
+        # #calculate mean R0 after implementation control measures
+        # caseafter<- subset(data, graphdate >= controlstart & type=="case")
+        # #remove last case
+        # caseafter<- arrange(caseafter, desc(dod))
+        # caseafter = caseafter[-1,]
+        # r.caseafter<- mean(caseafter$nsecondary, na.rm=T)
+        # ncaseafter<- length(caseafter$nsecondary)
+        # sdcaseafter<- sd(caseafter$nsecondary, na.rm=T)
+        # lowercaseafter<- (qchisq(0.025, 2*r.caseafter* ncaseafter)/2)/ncaseafter  #exact method poisson
+        # uppercaseafter<- (qchisq(0.975, 2*(r.caseafter* ncaseafter+1))/2)/ncaseafter  #exact method poisson
+        # lowercaseaftersem<- r.caseafter - (sdcaseafter/sqrt(ncaseafter))
+        # uppercaseaftersem<- r.caseafter + (sdcaseafter/sqrt(ncaseafter))
 
         #calculate no of secondary cases per case for graph
-        count_df<- count(data$IDSource[data$Type=="Case"])
-        data<- merge(data, count_df, by.x="ID", by.y="x", all.x=T)
-        data$freq<- ifelse(is.na(data$freq)& data$Type=="Case", 0, data$freq)
-        count_df2<- aggregate(data[,c("DOD","freq")], by= list(data$DOD, data$freq), FUN=length)
+        count_df<- count(data$idsource[data$type=="case"])
+        data<- merge(data, count_df, by.x="id", by.y="x", all.x=T)
+        data$freq<- ifelse(is.na(data$freq)& data$type=="case", 0, data$freq)
+        count_df2<- aggregate(data[,c("dod","freq")], by= list(data$dod, data$freq), FUN=length)
 
 
 
@@ -330,38 +439,38 @@ shinyServer(function(input, output) {
 
 
         #determine the roots for every cluster
-        data$Root<- ifelse(is.na(data$IDSource), 1, 0)
-
+        data$root<- ifelse(is.na(data$idsource), 1, 0)
 
         #calculate days since first case, to determine xlim of graph
         mindatum<- min(data$graphdate, na.rm=T)
         data$daysdatum<- data$graphdate - mindatum
 
-        #For graph, only include the contacts, which still pose a risk, probsymp>0
 
-        data4<- subset(data, Type=="Case"| (Type=="Contact" & probsymp >= problow))
-        data4$IDSource2<- as.character(data4$IDSource)
+        #For graph, only include the contacts, which still pose a risk, probsymp>0.5
+        data_graph<- subset(data, type=="case"| (type=="contact" & probsymp >= problow))
+        data_graph$idsource2<- as.character(data_graph$idsource)
 
 
         ####################################
         #use algorithm to layout the links between cases and contacts for network diagram
-
         #maak edges data frame, met edges en de attributes
-        edges<- data.frame(IDSource= data4$IDSource2, ID=data4$ID)
+        edges<- data.frame(idsource= data_graph$idsource2, id=data_graph$id)
         edges2<- na.omit(edges)
 
         #maak vertices data frame, met vertices en de attributes
-        vertices<- data.frame(ID= data4$ID, type=data4$Type, exposuretype= data4$Exposure_type,
-                gender= data4$Gender, birthyear= data4$Year_birth, days=data4$daysdatum,
-                root= data4$Root, IDSource= data4$IDSource2, probsymp= data4$probsymp,
-                date05= data4$date05, date95= data4$date95, graphdate= data4$graphdate)
+        vertices<- data.frame(id= data_graph$id, type=data_graph$type, exposuretype= data_graph$exposure_type,
+          gender= data_graph$gender, days=data_graph$daysdatum,
+          root= data_graph$root, idsource= data_graph$idsource2, probsymp= data_graph$probsymp,
+          date05= data_graph$date05, date95= data_graph$date95, graphdate= data_graph$graphdate)
 
         suppressWarnings(
-        infectiongraph <- graph.data.frame(edges2, directed=TRUE, vertices=vertices)
+          #first network-step
+          infectiongraph <- graph.data.frame(edges2, directed=TRUE, vertices=vertices)
         )
 
-        #extract the IDs of the root-nodes
-        roots<- data4$ID[data4$Root==1]
+        #for tree-layout determine which are the roots
+        #extract the ids of the root-nodes
+        roots<- data_graph$id[data_graph$root==1]
         roots<- roots[!is.na(roots)]
         roots<- as.character(roots)
 
@@ -370,48 +479,49 @@ shinyServer(function(input, output) {
 
         #make new layout for graph (tree layout)
         generationlayout<-layout.reingold.tilford(graph=infectiongraph,
-                root= positionroots, flip.y=T)
+          root= positionroots, flip.y=T)
+
 
         #add dummy generations for layout (no crossing lines)
         #first add generation number
-        generationdf<- data.frame(ID=V(infectiongraph)$name, generation_rev=generationlayout[,2], generation= 5-generationlayout[,2])
-        vertices<- merge(vertices, generationdf, by="ID")
+        generationdf<- data.frame(id=V(infectiongraph)$name, generation_rev=generationlayout[,2], generation= 5-generationlayout[,2])
+        vertices<- merge(vertices, generationdf, by="id")
         #create dummy dataframe
-        verticedummy<- data.frame(ID= vertices$ID, IDSource= vertices$IDSource, generation=vertices$generation, root=vertices$root)
+        verticedummy<- data.frame(id= vertices$id, idsource= vertices$idsource, generation=vertices$generation, root=vertices$root)
         #create endpoint variable
-        verticedummy$endpoint<- ifelse(verticedummy$ID %in% verticedummy$IDSource, 0, 1)
+        verticedummy$endpoint<- ifelse(verticedummy$id %in% verticedummy$idsource, 0, 1)
 
         endpointdf<- subset(verticedummy, endpoint==1)
         endpointdf$nrnewrecords<- max(endpointdf$generation)-endpointdf$generation
 
 
-        for (i in 1: (length(verticedummy$ID)+ sum(endpointdf$nrnewrecords))){
+        for (i in 1: (length(verticedummy$id)+ sum(endpointdf$nrnewrecords))){
 
                 tryCatch({
                 if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
                         verticedummy$endpoint[i]<- c(0)
                         root<- c(0)
-                        newrow<- data.frame(ID=paste("dummy",i), IDSource= verticedummy$ID[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
+                        newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
                         verticedummy<- rbind(verticedummy, newrow)
                 }
                 }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
                 }
-        edgesdummy<- data.frame(IDSource= verticedummy$IDSource, ID=verticedummy$ID)
+        edgesdummy<- data.frame(idsource= verticedummy$idsource, id=verticedummy$id)
         edgesdummy2<- na.omit(edgesdummy)
         infectiongraphdummy<- graph.data.frame(edgesdummy2, directed=T)
-        #extract the IDs of the root-nodes
-        rootsdummy<- verticedummy$ID[verticedummy$root==1]
+        #extract the ids of the root-nodes
+        rootsdummy<- verticedummy$id[verticedummy$root==1]
         rootsdummy<- rootsdummy[!is.na(rootsdummy)]
         rootsdummy<- as.character(rootsdummy)
 
         #determine which nodes (position) in the vertex dataframe are the roots
         positionrootsdummy<- match(rootsdummy, V(infectiongraphdummy)$name)
         generationlayoutdummy<-layout.reingold.tilford(graph=infectiongraphdummy,
-                root= positionrootsdummy, flip.y=T)
+          root= positionrootsdummy, flip.y=T)
 
-        yposition<- data.frame(ID=V(infectiongraphdummy)$name, yID=generationlayoutdummy[,1])
+        yposition<- data.frame(id=V(infectiongraphdummy)$name, yid=generationlayoutdummy[,1])
 
-        vertices.dataframe<- merge(vertices, yposition, by="ID", all.x=T)
+        vertices.dataframe<- merge(vertices, yposition, by="id", all.x=T)
 
         #involve time, by making a time-layout
         timelayout<- matrix(0, length(generationlayout[,1]), 2)
@@ -421,16 +531,16 @@ shinyServer(function(input, output) {
 
         #add time-layout parameters to the vertices dataframe
         vertices.dataframe<- cbind(vertices.dataframe, timelayout[,1])
-        colnames(vertices.dataframe)[16]<-"xID"
+        colnames(vertices.dataframe)[ncol(vertices.dataframe)]<-"xid"
 
 
 
         #create lookup table to add coordinates of source to every vertex
-        lookup<- data.frame(IDSource=vertices.dataframe$ID, xsource= vertices.dataframe$xID, ysource= vertices.dataframe$yID)
+        lookup<- data.frame(idsource=vertices.dataframe$id, xsource= vertices.dataframe$xid, ysource= vertices.dataframe$yid)
 
-        vertices.dataframe <- join(vertices.dataframe, lookup, by = "IDSource")
+        vertices.dataframe <- join(vertices.dataframe, lookup, by = "idsource")
         vertices.dataframe$xsourcedate<- min(vertices.dataframe$graphdate) + vertices.dataframe$xsource
-        vertices.dataframe$xIDdate<- min(vertices.dataframe$graphdate) + vertices.dataframe$xID
+        vertices.dataframe$xiddate<- min(vertices.dataframe$graphdate) + vertices.dataframe$xid
 
 
 
@@ -439,20 +549,22 @@ shinyServer(function(input, output) {
 
         #calculate indicators to add to plot
 
-        ncase<- length(data$Type[data$Type=="Case"])
-        ncontact<- length(data$Type[data$Type=="Contact"])
-        ncontactzero<- length(data$Type[data$Type=="Contact" & data$probsymp < problow])
-        ncontactfollow<- length(data$Type[data$Type=="Contact" & data$probsymp >= problow])
-        nclusters<- sum(data$Root)
-        transmission<- subset(vertices.dataframe, vertices.dataframe$exposuretype %in% ARdf_5total$Exposure_type)
+        ncase<- length(data$type[data$type=="case"])
+        ncontact<- length(data$type[data$type=="contact"])
+        ncontactzero<- length(data$type[data$type=="contact" & data$probsymp < problow])
+        ncontactfollow<- length(data$type[data$type=="contact" & data$probsymp >= problow])
+        nclusters<- sum(data$root)
+        transmission<- subset(vertices.dataframe, vertices.dataframe$exposuretype %in% ardf_5total$exposure_type)
         transmission$exposuretype<- factor(transmission$exposuretype, levels(droplevels(transmission$exposuretype)))
         typetransmissiontable<- table(transmission$exposuretype, transmission$type)
         labels<- c()
         for (i in (1:length(typetransmissiontable[,1]))){
-                temp<- paste(rownames(typetransmissiontable)[i], " (", typetransmissiontable[i,1], ",", typetransmissiontable[i,2], ")")
-                labels<- c(labels, temp)
+          temp<- paste(rownames(typetransmissiontable)[i], " (", typetransmissiontable[i,1], ",", typetransmissiontable[i,2], ")")
+          labels<- c(labels, temp)
         }
-        gendertable<- table(vertices.dataframe$gender, vertices.dataframe$type)
+        gendertable<- table(as.character(vertices.dataframe$gender), vertices.dataframe$type)
+
+
 
 
         #plot
@@ -460,116 +572,179 @@ shinyServer(function(input, output) {
         vertices.dataframe$currentdate<- as.numeric(currentdate)
         vertices.dataframe$currentdate2<- currentdate
         vertices.dataframe$currentdatelabel<- "current date"
-        vertices.dataframe$ID <- as.character(vertices.dataframe$ID)
-        vertices.dataframe$IDSource <- as.character(vertices.dataframe$IDSource)
+        vertices.dataframe$id <- as.character(vertices.dataframe$id)
+        vertices.dataframe$idsource <- as.character(vertices.dataframe$idsource)
         vertices.dataframe$firstdiagnosis<- as.numeric(outbreakdetect)
         vertices.dataframe$firstdiagnosis2<- outbreakdetect
         vertices.dataframe$action<- as.numeric(controlstart)
         vertices.dataframe$action2<- controlstart
 
 
-        dfrect<- data.frame(xmin=c(currentdate), xmax= c(Inf), ymin=c(-Inf), ymax=c(Inf))
+        dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(vertices.dataframe$date95, na.rm=T)+3), ymin=c(-Inf), ymax=c(Inf))
         dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(-Inf), ymax=c(Inf))
-        textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yID, na.rm=T)+3.5, max(vertices.dataframe$yID, na.rm=T)+3.5, max(vertices.dataframe$yID, na.rm=T)+3.5), hjust= c(1, 0.5, 0 ))
+        textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yid, na.rm=T)+3.5, max(vertices.dataframe$yid, na.rm=T)+3.5, max(vertices.dataframe$yid, na.rm=T)+3.5), hjust= c(1, 0.5, 0 ))
 
-        annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(-Inf), ymax=c(Inf))
-
-
+        annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
 
         p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
           geom_segment(data=annotation,
                        aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
-          geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
+          geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.3, inherit.aes=FALSE)+
           geom_text(data=textdf, aes(x=x, y=y, label=label, hjust=hjust), color="black", size=3)+
           geom_segment(data=subset(textdf, label=="past"), aes(x = x, y = y-1, xend = x-3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
           geom_segment(data=subset(textdf, label=="future"), aes(x = x, y = y-1, xend = x+3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
-          coord_cartesian(ylim = c(min(vertices.dataframe$yID, na.rm=T)-3, max(vertices.dataframe$yID, na.rm=T)+5),
+          coord_cartesian(ylim = c(min(vertices.dataframe$yid, na.rm=T)-3, max(vertices.dataframe$yid, na.rm=T)+5),
                           xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
-          geom_segment(data= subset(vertices.dataframe, !is.na(IDSource) & IDSource!=ID),
-                       aes(x=xsourcedate, y=ysource, xend=xIDdate, yend=yID, col= exposuretype, linetype=type, drop=F),
-                       size=0.7)+
-          scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="Type of contact")+
+          geom_segment(data= subset(vertices.dataframe, !is.na(idsource) & idsource!=id),
+                       aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type, drop=F))+
+          scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="type of contact")+
           scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
                               name="Exposure type \n(# cases, # contacts in follow-up)",
                               labels= labels)+
-          geom_segment(data=subset(vertices.dataframe, type == "Contact"),
-                       aes(x = date05, y = yID, xend = date95, yend = yID),
-                       colour='black', size=0.5)+
-          geom_point(data=subset(vertices.dataframe, type == "Contact"),
-                     aes(x=date05, y=yID, shape=gender),
-                     col="black", fill= "black",
-                     size=1.5)+
-          geom_point(data=subset(vertices.dataframe, type == "Contact"),
-                     aes(x=date95, y=yID, shape=gender),
-                     col="black", fill= "black",
-                     size=1.5)+
-          scale_shape_manual(name= "Gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
-                             labels= c(paste("man (",gendertable[1,1],",", gendertable[1,2], ")"), paste("woman (",gendertable[2,1],",", gendertable[2,2], ")"), paste("unknown (",gendertable[3,1],",", gendertable[3,2], ")")),
-                             drop=F)+
-          geom_point(data=subset(vertices.dataframe, type=="Case"),
-                     aes(x=graphdate, y=yID, shape=gender),
-                     col="black", fill= "black",
-                     size=2)+
-          geom_text(data=subset(vertices.dataframe, type == "Case"),
-                    aes(x=  xIDdate, y= yID+1.5, label= ID),
+          geom_rect(data=subset(vertices.dataframe, type == "contact"),
+                    aes(xmin=date05, xmax=date95, ymin=yid-0.2, ymax=yid+0.2, fill = type), inherit.aes=FALSE)+
+          scale_fill_manual(values = c("#99000d"), labels= c("Monitoring period of \ncontacts in follow-up"), name= " ")+
+          # geom_segment(data=subset(vertices.dataframe, type == "contact"),
+          #         aes(x = date05, y = yid, xend = date95, yend = yid),
+          #         colour='black', size=0.5)+
+          # geom_point(data=subset(vertices.dataframe, type == "contact"),
+          #         aes(x=date05, y=yid, shape=gender),
+          #         col="black", fill= "black",
+          #         size=1)+
+          # geom_point(data=subset(vertices.dataframe, type == "contact"),
+          #         aes(x=date95, y=yid, shape=gender),
+          #         col="black", fill= "black",
+          #         size=1)+
+          geom_point(data=subset(vertices.dataframe, type=="case"),
+                   aes(x=graphdate, y=yid, shape=gender),
+                   col="black", fill= "black",
+                   size=2)+
+          scale_shape_manual(name= "gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
+                    labels= c(paste(unique(as.character(vertices.dataframe$gender))," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
+          geom_text(data=subset(vertices.dataframe, type == "case"),
+                    aes(x=  xiddate, y= yid+1.5, label= id),
                     color="black",
-                    size=2.5)+
-          geom_text(data=subset(vertices.dataframe, type == "Contact"),
-                    aes(x= date95+1, y= yID, label= ID),
+                    size=2)+
+          geom_text(data=subset(vertices.dataframe, type == "contact"),
+                    aes(x= date95+1, y= yid, label= id),
                     color="black",
-                    size=2.5)+
-                labs(y= "onzin titel",
-                        title= paste("Overview of the ", disease, " outbreak, ", country, "\n", min(vertices.dataframe$graphdate), " to ", currentdate))+
-                theme_bw()+
-                theme(axis.title.x=element_blank(),
-                        axis.title.y=element_text(size=10,face="bold", colour="white"),
-                        axis.text.x=element_blank(),
-                        axis.text.y=element_text(size=10, colour="white"),
-                        axis.ticks.y= element_blank(),
-                        axis.ticks.x= element_blank(),
-                        legend.text= element_text(size=10),
-                        legend.title= element_text(size=10, face="bold"),
-                        legend.key = element_blank(),
-                        legend.margin=unit(0, "lines"),
-                        panel.grid.minor.y = element_blank(),
-                        panel.grid.major.y = element_blank(),
-                        panel.margin = unit(c(0,0,0,0), "line"),
-                        plot.title= element_text(size=12, face="bold"),
-                        plot.margin = unit(c(0,0,0,0.57), "line"))+
-                guides(colour = guide_legend(order = 3),
-                        shape = guide_legend(order = 1),
-                        linetype= guide_legend(order=2))
+                    size=2)+
+          labs(y= "onzin titel",
+                    title= paste("Overview of the ", disease, " outbreak, ", country, "\n", min(vertices.dataframe$graphdate), " to ", currentdate))+
+          theme_bw()+
+          theme(axis.title.x=element_blank(),
+                axis.title.y=element_text(size=7,face="bold", colour="white"),
+                axis.text.x=element_blank(),
+                axis.text.y=element_text(size=7, colour="white"),
+                axis.ticks.y= element_blank(),
+                axis.ticks.x= element_blank(),
+                legend.text= element_text(size=7),
+                legend.title= element_text(size=7, face="bold"),
+                legend.key = element_blank(),
+                legend.margin=unit(0, "lines"),
+                panel.grid.minor.y = element_blank(),
+                panel.grid.major.y = element_blank(),
+                panel.margin = unit(c(0,0,0,0), "line"),
+                plot.title= element_text(size=10, face="bold"),
+                plot.margin = unit(c(0,0,0,0.2), "line"))+
+          guides(colour = guide_legend(order = 3),
+                 shape = guide_legend(order = 1),
+                 linetype= guide_legend(order=2))
+
+        # p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
+        #   geom_segment(data=annotation,
+        #     aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
+        #   geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
+        #   geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
+        #   geom_text(data=textdf, aes(x=x, y=y, label=label, hjust=hjust), color="black", size=3)+
+        #   geom_segment(data=subset(textdf, label=="past"), aes(x = x, y = y-1, xend = x-3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
+        #   geom_segment(data=subset(textdf, label=="future"), aes(x = x, y = y-1, xend = x+3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
+        #   coord_cartesian(ylim = c(min(vertices.dataframe$yid, na.rm=T)-3, max(vertices.dataframe$yid, na.rm=T)+5),
+        #    xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+        #   geom_segment(data= subset(vertices.dataframe, !is.na(idsource) & idsource!=id),
+        #     aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type, drop=F))+
+        #   scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="type of contact")+
+        #   scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
+        #     name="Exposure type \n(# cases, # contacts in follow-up)",
+        #     labels= labels)+
+        #   geom_segment(data=subset(vertices.dataframe, type == "contact"),
+        #     aes(x = date05, y = yid, xend = date95, yend = yid),
+        #     colour='black', size=0.5)+
+        #   geom_point(data=subset(vertices.dataframe, type == "contact"),
+        #     aes(x=date05, y=yid, shape=gender),
+        #     col="black", fill= "black",
+        #     size=1)+
+        #   geom_point(data=subset(vertices.dataframe, type == "contact"),
+        #     aes(x=date95, y=yid, shape=gender),
+        #     col="black", fill= "black",
+        #     size=1)+
+        #   scale_shape_manual(name= "gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
+        #     labels= c(paste(unique(as.character(vertices.dataframe$gender))," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
+        #   geom_point(data=subset(vertices.dataframe, type=="case"),
+        #     aes(x=graphdate, y=yid, shape=gender),
+        #     col="black", fill= "black",
+        #     size=2)+
+        #   # geom_text(data=subset(vertices.dataframe, type == "case"),
+        #   #         aes(x=  xiddate, y= yid+1.5, label= id),
+        #   #         color="black",
+        #   #         size=2)+
+        #   # geom_text(data=subset(vertices.dataframe, type == "contact"),
+        #   #         aes(x= date95+1, y= yid, label= id),
+        #   #         color="black",
+        #   #         size=2)+
+        #         labs(y= "onzin titel",
+        #                 title= paste("Overview of the ", disease, " outbreak, ", country, "\n", min(vertices.dataframe$graphdate), " to ", currentdate))+
+        #         theme_bw()+
+        #         theme(axis.title.x=element_blank(),
+        #                 axis.title.y=element_text(size=10,face="bold", colour="white"),
+        #                 axis.text.x=element_blank(),
+        #                 axis.text.y=element_text(size=10, colour="white"),
+        #                 axis.ticks.y= element_blank(),
+        #                 axis.ticks.x= element_blank(),
+        #                 legend.text= element_text(size=10),
+        #                 legend.title= element_text(size=10, face="bold"),
+        #                 legend.key = element_blank(),
+        #                 legend.margin=unit(0, "lines"),
+        #                 panel.grid.minor.y = element_blank(),
+        #                 panel.grid.major.y = element_blank(),
+        #                 panel.margin = unit(c(0,0,0,0), "line"),
+        #                 plot.title= element_text(size=12, face="bold"),
+        #                 plot.margin = unit(c(0,0,0,0.57), "line"))+
+        #         guides(colour = guide_legend(order = 3),
+        #                 shape = guide_legend(order = 1),
+        #                 linetype= guide_legend(order=2))
 
 
         p1 <- p + theme(legend.position="none")
 
         p2<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
-                geom_segment(data=annotation,
-                        aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
-                geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
-                geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
-                coord_cartesian(ylim = c(-0.2, 10),
-                        xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
-                geom_histogram(data=subset(vertices.dataframe, type=="Case"),
-                        aes(x=graphdate, ..count..),
-                        binwidth= 3,
-                        col="black", fill= "black", alpha=0.5 )+
-                scale_y_continuous(breaks=c(seq(0,10, by= 2)))+
-                labs(x="Date symptom onset",
-                        y= "# cases")+
-                theme_bw()+
-                theme(axis.title.x=element_text(size=10,face="bold"),
-                        axis.title.y=element_text(size=10,face="bold"),
-                        axis.text.x=element_text(size=10),
-                        axis.text.y=element_text(size=10),
-                        axis.ticks.y= element_line(colour="black"),
-                        legend.text= element_text(size=10),
-                        legend.title= element_text(size=10, face="bold"),
-                        legend.key = element_blank(),
-                        plot.title= element_text(size=12, face="bold"),
-                        plot.margin = unit(c(0,0,0,0.7), "line"))+
-                theme(legend.position="none")
+          geom_segment(data=annotation,
+            aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
+          geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
+          geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
+          coord_cartesian(ylim = c(-0.2, 20),
+            xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+          geom_histogram(data=subset(vertices.dataframe, type=="case"),
+            aes(x=graphdate, ..count..),
+            binwidth= 3,
+            col="black", fill= "black", alpha=0.5 )+
+          #scale_y_continuous(breaks=c(seq(0,20, by= 2)))+
+          scale_y_continuous(breaks= pretty_breaks())+
+          labs(x="Date symptom onset",
+            y= "# cases")+
+          theme_bw()+
+          theme(axis.title.x=element_text(size=7,face="bold"),
+            axis.title.y=element_text(size=7,face="bold"),
+            axis.text.x=element_text(size=7),
+            axis.text.y=element_text(size=7),
+            axis.ticks.y= element_line(colour="black"),
+            legend.text= element_text(size=7),
+            legend.title= element_text(size=7, face="bold"),
+            legend.key = element_blank(),
+            plot.title= element_text(size=10, face="bold"),
+            plot.margin = unit(c(0,0,0,0.6), "line"))+
+          theme(legend.position="none")
 
 
 
@@ -578,42 +753,67 @@ shinyServer(function(input, output) {
                        aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
-          coord_cartesian(ylim = c(-0.5, maxexact2+0.5),
+          coord_cartesian(ylim = c(-0.5, maxupper+0.5),
                           xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
           geom_point(data=count_df2, aes(x=as.Date(Group.1), y=Group.2, size=freq), alpha=0.7, show.legend = FALSE)+
           scale_size_identity()+
-          geom_ribbon(data=ma.dataframe2, aes(x=graphdate, ymax=upperexact, ymin=lowerexact), fill="red", alpha=0.2)+
-          geom_line(data=ma.dataframe2, aes(x=graphdate, y=ma), col="black", size=0.6)+
+          geom_ribbon(data=ma.dataframe2, aes(x=graphdate, ymax=upper.ci, ymin=lower.ci), fill="red", alpha=0.2)+
+          geom_line(data=ma.dataframe2, aes(x=graphdate, y=rt), col="black", size=0.6)+
           labs(x=" ", y="Rt and # secondary \ncases per case")+
           theme_bw()+
-          theme(axis.title.x=element_text(size=10,face="bold"),
-                axis.title.y=element_text(size=10,face="bold"),
+          theme(axis.title.x=element_text(size=7,face="bold"),
+                axis.title.y=element_text(size=7,face="bold"),
                 axis.text.x=element_blank(),
-                axis.text.y=element_text(size=10),
+                axis.text.y=element_text(size=7),
                 axis.ticks.y= element_line(colour="black"),
                 axis.ticks.x= element_blank(),
                 legend.text= element_text(size=7),
                 legend.key = element_blank(),
                 legend.key.size= unit(c(0.4), "cm"),
                 plot.title= element_text(size=10, face="bold"),
-                plot.margin = unit(c(0,0,0,0), "line"))
+                plot.margin = unit(c(0.5,0,0,0), "line"))
+
+        # p3<- ggplot(data=ma.dataframe2, aes(x=graphdate))+
+        #   geom_segment(data=annotation,
+        #     aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
+        #   geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
+        #   geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
+        #   coord_cartesian(ylim = c(-0.5, maxexact2+0.5),
+        #     xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+        #   geom_point(data=count_df2, aes(x=as.Date(Group.1), y=Group.2, size=freq), alpha=0.7, show.legend = FALSE)+
+        #   scale_size_identity()+
+        #   geom_ribbon(data=ma.dataframe2, aes(x=graphdate, ymax=upperexact, ymin=lowerexact), fill="red", alpha=0.2)+
+        #   geom_line(data=ma.dataframe2, aes(x=graphdate, y=ma), col="black", size=0.6)+
+        #   labs(x=" ", y="Rt and # secondary \ncases per case")+
+        #   theme_bw()+
+        #   theme(axis.title.x=element_text(size=7,face="bold"),
+        #     axis.title.y=element_text(size=7,face="bold"),
+        #     axis.text.x=element_blank(),
+        #     axis.text.y=element_text(size=7),
+        #     axis.ticks.y= element_line(colour="black"),
+        #     axis.ticks.x= element_blank(),
+        #     legend.text= element_text(size=7),
+        #     legend.key = element_blank(),
+        #     legend.key.size= unit(c(0.4), "cm"),
+        #     plot.title= element_text(size=10, face="bold"),
+        #     plot.margin = unit(c(0.5,0,0,0), "line"))
 
 
         #plot attack rates
-        ar<- ggplot(data=ARdf_5total, aes(x=Exposure_type, y=AR))+
-          geom_bar(aes(x=Exposure_type, ymax = max(AR), fill=Exposure_type, drop=F), stat="identity",size=4, position=position_dodge(width=0.6))+
-          geom_errorbar(aes(x=Exposure_type, ymin=ARlo, ymax=ARhi, drop=F), position=position_dodge(width=0.6), width=0.2, show.legend = FALSE)+
+        ar<- ggplot(data=ardf_5total, aes(x=exposure_type, y=ar))+
+          geom_bar(aes(x=exposure_type, ymax = max(ar), fill=exposure_type, drop=F), stat="identity",size=4, position=position_dodge(width=0.6))+
+          geom_errorbar(aes(x=exposure_type, ymin=arlo, ymax=arhi, drop=F), position=position_dodge(width=0.6), width=0.2, show.legend = FALSE)+
           scale_fill_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33"), guide=F)+
           labs(y= "Attack rate", x= "Exposure type") +
           theme_bw()+
-          theme(axis.title.y= element_text(size=10,face="bold"),
-                axis.text.y=element_text(size=10),
-                axis.title.x= element_text(size=10,face="bold"),
-                axis.text.x=element_text(size=10, angle=60, hjust=1),
-                legend.text= element_text(size=7),
-                legend.key = element_blank(),
-                legend.key.size= unit(c(0.4), "cm"),
-                plot.margin = unit(c(0,1,1,1), "line"))+
+          theme(axis.title.y= element_text(size=7,face="bold"),
+            axis.text.y=element_text(size=7),
+            axis.title.x= element_text(size=7,face="bold"),
+            axis.text.x=element_text(size=7, angle=60, hjust=1),
+            legend.text= element_text(size=7),
+            legend.key = element_blank(),
+            legend.key.size= unit(c(0.4), "cm"),
+            plot.margin = unit(c(0,1,1,1), "line"))+
           theme(legend.position="none")
 
 
@@ -628,12 +828,12 @@ shinyServer(function(input, output) {
         ), hjust=0, gp= gpar(fontsize= 10))
 
 
+
         grid.arrange(arrangeGrob(p1, p3, p2, nrow = 3, heights= c(7.5,1.5,1)),
                 arrangeGrob(text,legend,ar, nrow=3, heights=c(2.5,4,3.5)),
                 widths=unit.c(unit(0.95, "npc") - legend$width, unit(0.05, "npc") + legend$width),
                 nrow=1)
         }, width=1200, height=800)
-
 
 
 
