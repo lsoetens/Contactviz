@@ -34,7 +34,10 @@ shinyServer(function(input, output) {
         data<- read.csv(inFile$datapath, header=input$header, sep=input$sep,
                         stringsAsFactors=F)
 
-        withProgress(message = 'Making plot', value = 0, {
+        withProgress(message = 'Processing...', value = 0, {
+
+        # Increment the progress bar, and update the detail text.
+        incProgress(0.1, detail = paste("Loading data..."))
 
         #set the current date
         currentdate<- reactive({ as.Date(input$currentdate, origin = "1970-01-01")})
@@ -109,7 +112,8 @@ shinyServer(function(input, output) {
         data<- subset(data, !(data$idsource %in% idselect))
         data$type<- ifelse(data$id %in% idselect, "contact", data$type)
 
-
+        # Increment the progress bar, and update the detail text.
+        incProgress(0.3, detail = paste("Estimating probabilities..."))
         #########################
         #calculate Feff for every contact
 
@@ -156,6 +160,9 @@ shinyServer(function(input, output) {
 
         #########################################
         #MLE for probability on infection for every contact type
+
+        # Increment the progress bar, and update the detail text.
+        incProgress(0.5, detail = paste("Estimating attack rates..."))
 
         LE<- function(ns, na, feff, pi){
           x<- ns*log10(pi)+ na*log10(1-pi) + sum(log10(1-pi*feff))
@@ -223,6 +230,9 @@ shinyServer(function(input, output) {
 
         #################################################
         # Calculate reproduction number
+
+        # Increment the progress bar, and update the detail text.
+        incProgress(0.7, detail = paste("Estimating reproduction number..."))
 
 
         #first calculate the first and second component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
@@ -342,6 +352,9 @@ shinyServer(function(input, output) {
 
         #########################
         #data processing for visualisation
+
+        # Increment the progress bar, and update the detail text.
+        incProgress(0.9, detail = paste("Plotting..."))
 
 
         #determine the roots for every cluster
