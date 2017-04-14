@@ -415,12 +415,14 @@ shinyServer(function(input, output) {
         # }
         #
         for (i in 1:(5*sum(verticedummy$endpoint))){
+          tryCatch({
           if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
             verticedummy$endpoint[i]<- c(0)
             root<- c(0)
             newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
             verticedummy<- rbind(verticedummy, newrow)
           }
+          }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
         }
 
 
