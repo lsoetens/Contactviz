@@ -22,7 +22,8 @@ shinyServer(function(input, output) {
 
         ranges <- reactiveValues(x = NULL, y = NULL)
 
-        myData<- reactive({
+        output$plotcontacttrace <- renderPlot({
+
         inFile <- input$file1
 
         if (is.null(inFile))
@@ -31,11 +32,7 @@ shinyServer(function(input, output) {
 
         data<- read.csv(inFile$datapath, header=input$header, sep=input$sep,
                         stringsAsFactors=F)
-        })
 
-        output$plotcontacttrace <- renderPlot({
-
-        data<- myData()
 
         withProgress(message = 'Processing...', value = 0, {
 
