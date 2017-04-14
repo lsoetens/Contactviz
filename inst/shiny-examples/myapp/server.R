@@ -34,6 +34,8 @@ shinyServer(function(input, output) {
         data<- read.csv(inFile$datapath, header=input$header, sep=input$sep,
                         stringsAsFactors=F)
 
+        withProgress(message = 'Making plot', value = 0, {
+
         #set the current date
         currentdate<- reactive({ as.Date(input$currentdate, origin = "1970-01-01")})
         currentdate<- currentdate()
@@ -647,12 +649,14 @@ shinyServer(function(input, output) {
 
         legend<- gtable_filter(ggplot_gtable(ggplot_build(p)), "guide-box")
 
-        text<- textGrob(x=unit(0.15, "npc"), y=unit(0.5, "npc"),label= paste("Summary statistics:",  "\n\n# cases: ", ncase, "\n# contacts:", ncontact, ", of which: \n",
+        text<- textGrob(x=unit(0.2, "npc"), y=unit(0.41, "npc"),label= paste("Summary statistics:",  "\n\n# cases: ", ncase, "\n# contacts:", ncontact, ", of which: \n",
                 ncontactzero, " were no cases, ",ncontactfollow, " are in follow-up",
                 "\nMax. # secondary cases per case:", round(maxupper),
                 "\n\nImportant dates (dashed vertical lines):\n",
                 outbreakdetect, ": ", input$date1label, "\n", controlstart, ": ", input$date2label
-        ), hjust=0, gp= gpar(fontsize= 10))
+        ), hjust=0, gp= gpar(fontsize= 7))
+
+        })
 
 
         grid.arrange(arrangeGrob(p1, p3, p2, nrow = 3, heights= c(7.5,1.5,1)),
