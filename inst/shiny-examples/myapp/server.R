@@ -13,8 +13,8 @@ library(binom)
 library(Hmisc)
 library(boot)
 library(RColorBrewer)
+library(TTR)
 library(reshape2)
-
 
 
 
@@ -72,6 +72,8 @@ shinyServer(function(input, output) {
         problow<- ((100-surveillance)/2)/100
         probhigh<- 1-(((100-surveillance)/2)/100)
 
+        ############# Start of analysis #################
+
 
         #set all character-variables to lower case
         data$Type<- tolower(data$Type)
@@ -86,7 +88,7 @@ shinyServer(function(input, output) {
           idsource2<- as.character(idsource)
           date_onset_disease<- as.Date(dod, format="%Y-%m-%d")
           date_exposure<- as.Date(exposure_date, format="%Y-%m-%d")
-          gender<- factor(gender, levels= sort(unique(gender)), ordered=TRUE)
+          gender<- factor(gender, levels= c("man", "woman", "unknown"), ordered=TRUE)
           exposure_type<- factor(exposure_type, levels= sort(unique(exposure_type)))
         }
         )
@@ -96,15 +98,15 @@ shinyServer(function(input, output) {
 
 
         #Remove cases and their contacts if dod of case is after currentdate and exposure type is unknown
-        #idselect<- data$id[data$type == "case" & data$date_onset_disease> currentdate]
-        #data<- subset(data, !(data$id %in% idselect) & !(data$idsource %in% idselect))
+        idselect<- data$id[data$type == "case" & data$date_onset_disease> currentdate]
+        data<- subset(data, !(data$id %in% idselect) & !(data$idsource %in% idselect))
 
-        #set cases diagnosed after the currentdate as controls and remove their contacts
+
+        #set cases diagnosed after the currentdate as contacts and remove their contacts
         idselect<- data$id[data$type=="case" & data$date_onset_disease > currentdate]
         data<- subset(data, !(data$idsource %in% idselect))
         data$type<- ifelse(data$id %in% idselect, "contact", data$type)
 
-        #| data$idsource=="NA"  & (data$exposure_type=="")
 
         #########################
         #calculate Feff for every contact
@@ -120,6 +122,7 @@ shinyServer(function(input, output) {
           x<- expdate + runif(nsim, min=0, max= expduration)+ rlnorm(nsim, log(incubationperiod), log(incubationsd))
           return(x)
         }
+
 
         #returns a matrix, with in every column the simulated dates for one contact
         simdates<- mapply(convolution, expdate= data2[,"date_exposure"], expduration= data2[,"exposure_duration"], nsim=10000 )
@@ -140,13 +143,13 @@ shinyServer(function(input, output) {
         data3<- data.frame(id=data2$id, prob= prob, probsymp=probsymp, date05= date05, date95= date95)
         data<- merge(data, data3, by="id", all=T)
 
+
         # make a graphdate, which corresponds to the 1st day of symptom onset for cases,
         # and to the lower 5% of the symptom onset interval for contacts
         data<- within (data, {
           graphdate<- ifelse(type=="case", date_onset_disease, date05)
           graphdate<- as.Date(graphdate, origin = "1970-01-01")
         })
-
 
 
         #########################################
@@ -157,21 +160,28 @@ shinyServer(function(input, output) {
           return(x)
         }
 
+
+
         ar<- c()
         arlo<- c()
         arhi<- c()
         exposure_type<- c()
         ntotal<- c()
+        ncase<- c()
+        ncontact_no_symp<- c()
+
         for(i in 1: length(unique(data$exposure_type))){
           test<- subset(data, exposure_type== unique(data$exposure_type)[i])
           exposure_type<- c(append(exposure_type, as.character(unique(test$exposure_type)), after=length(exposure_type)))
           ntotal<- c(append(ntotal, length(test$exposure_type), after=length(ntotal)))
-          if (length(test$exposure_type)> 5){
+          ns<- length(test$type[test$type== "case"]) #number of cases
+          ncase<- c(append(ncase, ns, after= length(ncase)))
+          na<- length(test$type[test$type=="contact" & test$probsymp< problow]) #number of contacts no symptoms in surveillance period
+          ncontact_no_symp<- c(append(ncontact_no_symp, na, after= length(ncontact_no_symp)))
+          pi<- c()
+          ll<- c()
 
-            ns<- length(test$type[test$type== "case"]) #number of cases
-            na<- length(test$type[test$type=="contact" & test$probsymp< problow]) #number of contacts no symptoms in surveillance period
-            pi<- c()
-            ll<- c()
+          if (length(test$exposure_type)> 5){
             for (j in 1:1000){
               PI<- j/1000
               LL<- LE(ns=ns, na=na, feff=test$prob[test$type=="contact" & test$probsymp>= problow], pi=PI)
@@ -179,8 +189,8 @@ shinyServer(function(input, output) {
               ll<- c(append(ll, LL, after=length(ll)))
             }
             mle.df<- data.frame(pi= pi, ll=ll)
-            maxll<- mle.df$pi[mle.df$ll == max(mle.df$ll)] #maxLL
-            mle.df$dev<- 2*(max(mle.df$ll)-mle.df$ll)
+            maxll<- mle.df$pi[which(mle.df$ll == max(mle.df$ll, na.rm=T))] #maxLL
+            mle.df$dev<- 2*(max(mle.df$ll, na.rm=T)-mle.df$ll)
             lllow<- mle.df$pi[which(mle.df$dev < 3.841)[1]] #lower CI MAXLL
             llhi<- mle.df$pi[which(mle.df$dev < 3.841)[length(which(mle.df$dev < 3.841))]] #higher CI MaxLL
             ar<- c(append(ar, maxll, after=length(ar)))
@@ -188,28 +198,14 @@ shinyServer(function(input, output) {
             arhi<- c(append(arhi, llhi, after=length(arhi)))
           }
           else {
-            ns<- length(data$type[data$type== "case"]) #number of cases
-            na<- length(data$type[data$type=="contact" & data$probsymp< problow]) #number of contacts no symptoms in surveillance period
-            pi<- c()
-            ll<- c()
-            for (j in 1:1000){
-              PI<- j/1000
-              LL<- LE(ns=ns, na=na, feff=data$prob[data$type=="contact" & data$probsymp>= problow], pi=PI)
-              pi<- c(append(pi, PI, after=length(pi)))
-              ll<- c(append(ll, LL, after=length(ll)))
-            }
-            mle.df<- data.frame(pi= pi, ll=ll)
-            maxll<- mle.df$pi[mle.df$ll == max(mle.df$ll)] #maxLL
-            mle.df$dev<- 2*(max(mle.df$ll)-mle.df$ll)
-            lllow<- mle.df$pi[which(mle.df$dev < 3.841)[1]] #lower CI MAXLL
-            llhi<- mle.df$pi[which(mle.df$dev < 3.841)[length(which(mle.df$dev < 3.841))]] #higher CI MaxLL
-            ar<- c(append(ar, maxll, after=length(ar)))
-            arlo<- c(append(arlo, lllow, after=length(arlo)))
-            arhi<- c(append(arhi, llhi, after=length(arhi)))
+
+            ar<- c(append(ar, NA, after=length(ar)))
+            arlo<- c(append(arlo, NA, after=length(arlo)))
+            arhi<- c(append(arhi, NA, after=length(arhi)))
           }
         }
 
-        ardf<- data.frame(exposure_type=exposure_type, ar=ar, arlo=arlo, arhi=arhi, ntotal=ntotal)
+        ardf<- data.frame(exposure_type=exposure_type, ar=ar, arlo=arlo, arhi=arhi, ntotal=ntotal, ncase=ncase, ncontact_no_symp= ncontact_no_symp)
         ardf_5total<- subset(ardf, ntotal>= 5)
 
 
@@ -227,7 +223,7 @@ shinyServer(function(input, output) {
         # Calculate reproduction number
 
 
-        #first calculate the first component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
+        #first calculate the first and second component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
 
         rcase<- tapply(X=data$probinf, INDEX=data$idsource, FUN=sum, simplify=T)
         rcase2<- tapply(X=data$probinf[data$probinf> 0], INDEX=data$idsource[data$probinf>0], FUN= list)
@@ -236,14 +232,14 @@ shinyServer(function(input, output) {
         row.names(rcase) <- NULL
         data<- merge(data, rcase, by="id", all.x=T)
 
-        #next calculate the second component for orphan cases: add over the number of orphans and weigh each by their probability of being infected with case j
+        #next calculate the third component for orphan cases: add over the number of orphans and weigh each by their probability of being infected with case j
 
         orphans<-subset(data, is.na(data$idsource))
 
         cases<- subset(data, type=="case")
         for (i in 1: length(orphans$id)){
           days<- as.numeric(as.Date(orphans$dod[i])- as.Date(cases$dod))
-          orphan<- round(dgamma(days, 17.7, 1), 2)
+          orphan<- round(dgamma(days, generationtime, 1), 2)
           proborphan<- round(orphan/sum(orphan),2)
           dftemp<- data.frame(id= cases$id, proborphan=proborphan)
           dftemp$proborphan<- ifelse(is.na(dftemp$proborphan), 0, dftemp$proborphan)
@@ -271,11 +267,13 @@ shinyServer(function(input, output) {
           } else {
             temp.dataframe<- subset(data, subset= (graphdate >= alldates[i-generationtime] & graphdate <= alldates[i-1]))
           }
+
           # estimate R(t)
           id_temp<- temp.dataframe$id
           list_rcase<- rcase2[names(rcase2) %in% id_temp]
           orphandf<- temp.dataframe[, c(which(substr(colnames(temp.dataframe), 1, 10)== "proborphan"),  which(colnames(temp.dataframe)=="id"))]
           orphandf<- melt(orphandf, id.vars=c("id"))
+
           # remove NA's and zero probabilities
           orphandf$value<- ifelse(orphandf$value == 0, NA, orphandf$value)
           orphandf<- na.omit(orphandf)
@@ -289,15 +287,19 @@ shinyServer(function(input, output) {
           } else {
             list_rcase_orphan<- list_rcase
           }
+
           # number of secondary cases per case
           list_rcase_orphan_sum<- unlist(lapply(list_rcase_orphan, FUN= sum))
+
           # add zero secondary cases for those with no secondary cases
           id_nosec<- c(data$id[!(data$id %in% data$idsource) & data$type == "case"])
           id_nosec_temp<- temp.dataframe$id[temp.dataframe$id %in% id_nosec]
           id_nosec_temp<- id_nosec_temp[!(id_nosec_temp %in% names(list_rcase_orphan_sum))]
           list_rcase_orphan_sum<- c(list_rcase_orphan_sum, rep(0, length(id_nosec_temp)))
+
           # R(t)
           mean<- c(append(mean, mean(list_rcase_orphan_sum, na.rm = T), after = length(mean)))
+
           # estimating the 95% CI around R(t)
           mean_rcase<- c()
           for (i in 1:1000){
@@ -314,123 +316,25 @@ shinyServer(function(input, output) {
             # estimate mean from sample
             mean_rcase<- c(append(mean_rcase, mean(sum_rcase_unlist), after = length(mean_rcase)))
           }
+
           # determine 95% CI from sample means
           lower.ci<- c(append(lower.ci, quantile(mean_rcase, probs = c(0.025), na.rm = T), after = length(lower.ci)))
           upper.ci<- c(append(upper.ci, quantile(mean_rcase, probs = c(0.975), na.rm = T), after = length(upper.ci)))
+
         }
 
         ma.dataframe<- data.frame(graphdate= alldates, rt= mean, lower.ci= lower.ci, upper.ci = upper.ci)
         alldates<- data.frame(graphdate= alldates)
         ma.dataframe2<- merge(alldates, ma.dataframe, by="graphdate", all.x=T)
 
-        # # Calculate reproduction number
-        #
-        #
-        # #first calculate the first component for all cases: add over the number of contacts of that case and weigh each contact by their probability of being infected
-        #
-        # rcase<- tapply(X=data$probinf, INDEX=data$idsource, FUN=sum, simplify=T)
-        # rcase<- data.frame(id=rownames(rcase), rcase=rcase)
-        # row.names(rcase) <- NULL
-        # data<- merge(data, rcase, by="id", all.x=T)
-        #
-        # #next calculate the second component for orphan cases: add over the number of orphans and weigh each by their probability of being infected with case j
-        #
-        # orphans<-subset(data, is.na(data$idsource))
-        #
-        # cases<- subset(data, type=="case")
-        # for (i in 1: length(orphans$id)){
-        #   days<- as.numeric(as.Date(orphans$dod[i])- as.Date(cases$dod))
-        #   orphan<- round(dgamma(days, 17.7, 1), 2)
-        #   proborphan<- round(orphan/sum(orphan),2)
-        #   dftemp<- data.frame(id= cases$id, proborphan=proborphan)
-        #   dftemp$proborphan<- ifelse(is.na(dftemp$proborphan), 0, dftemp$proborphan)
-        #   dftemp$proborphan<- ifelse(is.nan(dftemp$proborphan), 0, dftemp$proborphan)
-        #   colnames(dftemp)<- c("id", paste("proborphan", i, sep="_"))
-        #   data<- merge(data, dftemp, by="id", all.x=T)
-        # }
-        #
-        # if (length(orphans$id)==0){
-        #   data$nsecondary<- round(data$rcase, 2)
-        # }
-        # if (length(orphans$id)==1){
-        #   data$nsecondary<- round(data$rcase + data$proborphan_1, 2)
-        # }
-        # if (length(orphans$id)>1){
-        #   sumproborphan<- rowSums(data[,(length(data)-(length(orphans$id)-1)):length(data)], na.rm=T)
-        #   data<- cbind(data, sumproborphan)
-        #   data$nsecondary<- round(data$rcase + sumproborphan, 2)
-        # }
-        #
-        # data$nsecondary<- ifelse(is.na(data$nsecondary) & data$type=="case", 0, data$nsecondary)
-        #
-        # #apply moving average for plotting
-        # ma_dates<- data.frame(graphdate=data$graphdate[data$type=="case"], nsecondary= data$nsecondary[data$type=="case"])
-        # alldates<- data.frame(graphdate=c(seq(min(cases$graphdate),  max(data$date95, na.rm=T), by=1)))
-        # ma.dataframe<- merge(alldates, ma_dates, by="graphdate", all=T)
-        # alldates2<- data.frame(graphdate=c(seq(min(cases$graphdate),  currentdate, by=1)))
-        #
-        # mean<- c()
-        # sd<- c()
-        # nsample<- c()
-        # for (i in 1: length(alldates2$graphdate)){
-        #   if (i<= generationtime) {
-        #     temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[1] & graphdate <= alldates2$graphdate[i]))
-        #   } else {
-        #     temp.dataframe<- subset(ma.dataframe, subset= (graphdate >= alldates2$graphdate[i-generationtime] & graphdate <= alldates2$graphdate[i-1]))
-        #   }
-        #   mean<- c(append(mean, mean(temp.dataframe$nsecondary, na.rm=T), after=length(mean)))
-        #   sd<- c(append(sd, sd(temp.dataframe$nsecondary, na.rm=T), after=length(sd)))
-        #   nsample<- c(append(nsample, sum(complete.cases(temp.dataframe)), after=length(nsample)))
-        # }
-        #
-        # ma.dataframe2<- data.frame(graphdate= alldates2$graphdate, ma=mean, sd=sd, n=nsample)
-        # ma.dataframe2<- merge(alldates, ma.dataframe2, by="graphdate", all.x=T)
-        # ma.dataframe2$lowerexact<- (qchisq(0.025, 2*ma.dataframe2$ma* ma.dataframe2$n)/2)/ma.dataframe2$n  #exact ma
-        # ma.dataframe2$upperexact<- (qchisq(0.975, 2*(ma.dataframe2$ma* ma.dataframe2$n+1))/2)/ma.dataframe2$n  #exact ma
-        # maxexact2<- max(ma.dataframe2$upperexact, na.rm=T) #for plotting, max y-axis
-        # ma.dataframe2$upperexact[ma.dataframe2$n <= 1]<- Inf
-        # ma.dataframe2$lowerexact[ma.dataframe2$n <= 1]<- -Inf
-        # ma.dataframe2$sem<- ma.dataframe2$sd/sqrt(ma.dataframe2$n)
-        # ma.dataframe2$lowersem<- ma.dataframe2$ma - ma.dataframe2$sem
-        # ma.dataframe2$highersem<- ma.dataframe2$ma + ma.dataframe2$sem
-        # ma.dataframe2$lowersem[ma.dataframe2$n <= 1]<- Inf
-        # ma.dataframe2$highersem[ma.dataframe2$n <= 1]<- -Inf
-        # maxsem<- max(ma.dataframe2$highersem, na.rm=T) #for plotting, max y-axis
-        #
-        # ma.dataframe2<- subset(ma.dataframe2, graphdate <= currentdate)
-        #
-        # #Calculate Rt for specific time periods
-        # #calculate mean R0 before case detected
-        # casedetect<- subset(data, graphdate <= outbreakdetect & type=="case")
-        # #leave out first case
-        # casedetect<- arrange(casedetect, dod)
-        # casedetect = casedetect[-1,]
-        # r.casedetect<- mean(casedetect$nsecondary, na.rm=T)
-        # ndetect<- length(casedetect$nsecondary)
-        # sddetect<- sd(casedetect$nsecondary, na.rm=T)
-        # lowerdetect<- (qchisq(0.025, 2*r.casedetect* ndetect)/2)/ndetect  #exact method poisson
-        # upperdetect<- (qchisq(0.975, 2*(r.casedetect* ndetect+1))/2)/ndetect  #exact method poisson
-        # lowerdetectsem<- r.casedetect - (sddetect/sqrt(ndetect))
-        # upperdetectsem<- r.casedetect + (sddetect/sqrt(ndetect))
-        #
-        # #calculate mean R0 after implementation control measures
-        # caseafter<- subset(data, graphdate >= controlstart & type=="case")
-        # #remove last case
-        # caseafter<- arrange(caseafter, desc(dod))
-        # caseafter = caseafter[-1,]
-        # r.caseafter<- mean(caseafter$nsecondary, na.rm=T)
-        # ncaseafter<- length(caseafter$nsecondary)
-        # sdcaseafter<- sd(caseafter$nsecondary, na.rm=T)
-        # lowercaseafter<- (qchisq(0.025, 2*r.caseafter* ncaseafter)/2)/ncaseafter  #exact method poisson
-        # uppercaseafter<- (qchisq(0.975, 2*(r.caseafter* ncaseafter+1))/2)/ncaseafter  #exact method poisson
-        # lowercaseaftersem<- r.caseafter - (sdcaseafter/sqrt(ncaseafter))
-        # uppercaseaftersem<- r.caseafter + (sdcaseafter/sqrt(ncaseafter))
 
         #calculate no of secondary cases per case for graph
         count_df<- count(data$idsource[data$type=="case"])
         data<- merge(data, count_df, by.x="id", by.y="x", all.x=T)
         data$freq<- ifelse(is.na(data$freq)& data$type=="case", 0, data$freq)
         count_df2<- aggregate(data[,c("dod","freq")], by= list(data$dod, data$freq), FUN=length)
+
+        maxupper<- max(count_df$freq)
 
 
 
@@ -446,8 +350,8 @@ shinyServer(function(input, output) {
         data$daysdatum<- data$graphdate - mindatum
 
 
-        #For graph, only include the contacts, which still pose a risk, probsymp>0.5
-        data_graph<- subset(data, type=="case"| (type=="contact" & probsymp >= problow))
+        #For graph, only include the contacts, which still pose a risk, probsymp>0.05
+        data_graph<- subset(data, type=="case"| (type=="contact" & probsymp > problow))
         data_graph$idsource2<- as.character(data_graph$idsource)
 
 
@@ -463,16 +367,19 @@ shinyServer(function(input, output) {
           root= data_graph$root, idsource= data_graph$idsource2, probsymp= data_graph$probsymp,
           date05= data_graph$date05, date95= data_graph$date95, graphdate= data_graph$graphdate)
 
+
         suppressWarnings(
           #first network-step
           infectiongraph <- graph.data.frame(edges2, directed=TRUE, vertices=vertices)
         )
+
 
         #for tree-layout determine which are the roots
         #extract the ids of the root-nodes
         roots<- data_graph$id[data_graph$root==1]
         roots<- roots[!is.na(roots)]
         roots<- as.character(roots)
+
 
         #determine which nodes (position) in the vertex dataframe are the roots
         positionroots<- match(roots, V(infectiongraph)$name)
@@ -491,21 +398,32 @@ shinyServer(function(input, output) {
         #create endpoint variable
         verticedummy$endpoint<- ifelse(verticedummy$id %in% verticedummy$idsource, 0, 1)
 
-        endpointdf<- subset(verticedummy, endpoint==1)
-        endpointdf$nrnewrecords<- max(endpointdf$generation)-endpointdf$generation
+        #endpointdf<- subset(verticedummy, endpoint==1)
+        #endpointdf$nrnewrecords<- max(endpointdf$generation)-endpointdf$generation
 
 
-        for (i in 1: (length(verticedummy$id)+ sum(endpointdf$nrnewrecords))){
+        # for (i in 1: (length(verticedummy$id)+ sum(endpointdf$nrnewrecords))){
+        #
+        #         tryCatch({
+        #         if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
+        #                 verticedummy$endpoint[i]<- c(0)
+        #                 root<- c(0)
+        #                 newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
+        #                 verticedummy<- rbind(verticedummy, newrow)
+        #         }
+        #         }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+        # }
+        #
+        for (i in 1:(5*sum(verticedummy$endpoint))){
+          if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
+            verticedummy$endpoint[i]<- c(0)
+            root<- c(0)
+            newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
+            verticedummy<- rbind(verticedummy, newrow)
+          }
+        }
 
-                tryCatch({
-                if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
-                        verticedummy$endpoint[i]<- c(0)
-                        root<- c(0)
-                        newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
-                        verticedummy<- rbind(verticedummy, newrow)
-                }
-                }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-                }
+
         edgesdummy<- data.frame(idsource= verticedummy$idsource, id=verticedummy$id)
         edgesdummy2<- na.omit(edgesdummy)
         infectiongraphdummy<- graph.data.frame(edgesdummy2, directed=T)
@@ -523,6 +441,7 @@ shinyServer(function(input, output) {
 
         vertices.dataframe<- merge(vertices, yposition, by="id", all.x=T)
 
+
         #involve time, by making a time-layout
         timelayout<- matrix(0, length(generationlayout[,1]), 2)
         timelayout[,1]<- V(infectiongraph)$days
@@ -534,14 +453,12 @@ shinyServer(function(input, output) {
         colnames(vertices.dataframe)[ncol(vertices.dataframe)]<-"xid"
 
 
-
         #create lookup table to add coordinates of source to every vertex
         lookup<- data.frame(idsource=vertices.dataframe$id, xsource= vertices.dataframe$xid, ysource= vertices.dataframe$yid)
 
         vertices.dataframe <- join(vertices.dataframe, lookup, by = "idsource")
         vertices.dataframe$xsourcedate<- min(vertices.dataframe$graphdate) + vertices.dataframe$xsource
         vertices.dataframe$xiddate<- min(vertices.dataframe$graphdate) + vertices.dataframe$xid
-
 
 
 
@@ -562,9 +479,7 @@ shinyServer(function(input, output) {
           temp<- paste(rownames(typetransmissiontable)[i], " (", typetransmissiontable[i,1], ",", typetransmissiontable[i,2], ")")
           labels<- c(labels, temp)
         }
-        gendertable<- table(as.character(vertices.dataframe$gender), vertices.dataframe$type)
-
-
+        gendertable<- table(vertices.dataframe$gender, vertices.dataframe$type)
 
 
         #plot
@@ -582,9 +497,10 @@ shinyServer(function(input, output) {
 
         dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(vertices.dataframe$date95, na.rm=T)+3), ymin=c(-Inf), ymax=c(Inf))
         dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(-Inf), ymax=c(Inf))
-        textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yid, na.rm=T)+3.5, max(vertices.dataframe$yid, na.rm=T)+3.5, max(vertices.dataframe$yid, na.rm=T)+3.5), hjust= c(1, 0.5, 0 ))
+        textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4), hjust= c(1, 0.5, 0 ))
 
         annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
+
 
         p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
           geom_segment(data=annotation,
@@ -621,7 +537,7 @@ shinyServer(function(input, output) {
                    col="black", fill= "black",
                    size=2)+
           scale_shape_manual(name= "gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
-                    labels= c(paste(unique(as.character(vertices.dataframe$gender))," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
+                    labels= c(paste(rownames(gendertable)," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
           geom_text(data=subset(vertices.dataframe, type == "case"),
                     aes(x=  xiddate, y= yid+1.5, label= id),
                     color="black",
@@ -651,70 +567,6 @@ shinyServer(function(input, output) {
           guides(colour = guide_legend(order = 3),
                  shape = guide_legend(order = 1),
                  linetype= guide_legend(order=2))
-
-        # p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
-        #   geom_segment(data=annotation,
-        #     aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
-        #   geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
-        #   geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
-        #   geom_text(data=textdf, aes(x=x, y=y, label=label, hjust=hjust), color="black", size=3)+
-        #   geom_segment(data=subset(textdf, label=="past"), aes(x = x, y = y-1, xend = x-3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
-        #   geom_segment(data=subset(textdf, label=="future"), aes(x = x, y = y-1, xend = x+3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
-        #   coord_cartesian(ylim = c(min(vertices.dataframe$yid, na.rm=T)-3, max(vertices.dataframe$yid, na.rm=T)+5),
-        #    xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
-        #   geom_segment(data= subset(vertices.dataframe, !is.na(idsource) & idsource!=id),
-        #     aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type, drop=F))+
-        #   scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="type of contact")+
-        #   scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
-        #     name="Exposure type \n(# cases, # contacts in follow-up)",
-        #     labels= labels)+
-        #   geom_segment(data=subset(vertices.dataframe, type == "contact"),
-        #     aes(x = date05, y = yid, xend = date95, yend = yid),
-        #     colour='black', size=0.5)+
-        #   geom_point(data=subset(vertices.dataframe, type == "contact"),
-        #     aes(x=date05, y=yid, shape=gender),
-        #     col="black", fill= "black",
-        #     size=1)+
-        #   geom_point(data=subset(vertices.dataframe, type == "contact"),
-        #     aes(x=date95, y=yid, shape=gender),
-        #     col="black", fill= "black",
-        #     size=1)+
-        #   scale_shape_manual(name= "gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
-        #     labels= c(paste(unique(as.character(vertices.dataframe$gender))," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
-        #   geom_point(data=subset(vertices.dataframe, type=="case"),
-        #     aes(x=graphdate, y=yid, shape=gender),
-        #     col="black", fill= "black",
-        #     size=2)+
-        #   # geom_text(data=subset(vertices.dataframe, type == "case"),
-        #   #         aes(x=  xiddate, y= yid+1.5, label= id),
-        #   #         color="black",
-        #   #         size=2)+
-        #   # geom_text(data=subset(vertices.dataframe, type == "contact"),
-        #   #         aes(x= date95+1, y= yid, label= id),
-        #   #         color="black",
-        #   #         size=2)+
-        #         labs(y= "onzin titel",
-        #                 title= paste("Overview of the ", disease, " outbreak, ", country, "\n", min(vertices.dataframe$graphdate), " to ", currentdate))+
-        #         theme_bw()+
-        #         theme(axis.title.x=element_blank(),
-        #                 axis.title.y=element_text(size=10,face="bold", colour="white"),
-        #                 axis.text.x=element_blank(),
-        #                 axis.text.y=element_text(size=10, colour="white"),
-        #                 axis.ticks.y= element_blank(),
-        #                 axis.ticks.x= element_blank(),
-        #                 legend.text= element_text(size=10),
-        #                 legend.title= element_text(size=10, face="bold"),
-        #                 legend.key = element_blank(),
-        #                 legend.margin=unit(0, "lines"),
-        #                 panel.grid.minor.y = element_blank(),
-        #                 panel.grid.major.y = element_blank(),
-        #                 panel.margin = unit(c(0,0,0,0), "line"),
-        #                 plot.title= element_text(size=12, face="bold"),
-        #                 plot.margin = unit(c(0,0,0,0.57), "line"))+
-        #         guides(colour = guide_legend(order = 3),
-        #                 shape = guide_legend(order = 1),
-        #                 linetype= guide_legend(order=2))
-
 
         p1 <- p + theme(legend.position="none")
 
@@ -747,7 +599,6 @@ shinyServer(function(input, output) {
           theme(legend.position="none")
 
 
-
         p3<- ggplot(data=ma.dataframe2, aes(x=graphdate))+
           geom_segment(data=annotation,
                        aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
@@ -771,32 +622,7 @@ shinyServer(function(input, output) {
                 legend.key = element_blank(),
                 legend.key.size= unit(c(0.4), "cm"),
                 plot.title= element_text(size=10, face="bold"),
-                plot.margin = unit(c(0.5,0,0,0), "line"))
-
-        # p3<- ggplot(data=ma.dataframe2, aes(x=graphdate))+
-        #   geom_segment(data=annotation,
-        #     aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
-        #   geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
-        #   geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
-        #   coord_cartesian(ylim = c(-0.5, maxexact2+0.5),
-        #     xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
-        #   geom_point(data=count_df2, aes(x=as.Date(Group.1), y=Group.2, size=freq), alpha=0.7, show.legend = FALSE)+
-        #   scale_size_identity()+
-        #   geom_ribbon(data=ma.dataframe2, aes(x=graphdate, ymax=upperexact, ymin=lowerexact), fill="red", alpha=0.2)+
-        #   geom_line(data=ma.dataframe2, aes(x=graphdate, y=ma), col="black", size=0.6)+
-        #   labs(x=" ", y="Rt and # secondary \ncases per case")+
-        #   theme_bw()+
-        #   theme(axis.title.x=element_text(size=7,face="bold"),
-        #     axis.title.y=element_text(size=7,face="bold"),
-        #     axis.text.x=element_blank(),
-        #     axis.text.y=element_text(size=7),
-        #     axis.ticks.y= element_line(colour="black"),
-        #     axis.ticks.x= element_blank(),
-        #     legend.text= element_text(size=7),
-        #     legend.key = element_blank(),
-        #     legend.key.size= unit(c(0.4), "cm"),
-        #     plot.title= element_text(size=10, face="bold"),
-        #     plot.margin = unit(c(0.5,0,0,0), "line"))
+                plot.margin = unit(c(0.5,0,0,0.35), "line"))
 
 
         #plot attack rates
@@ -817,16 +643,14 @@ shinyServer(function(input, output) {
           theme(legend.position="none")
 
 
-
         legend<- gtable_filter(ggplot_gtable(ggplot_build(p)), "guide-box")
 
         text<- textGrob(x=unit(0.15, "npc"), y=unit(0.5, "npc"),label= paste("Summary statistics:",  "\n\n# cases: ", ncase, "\n# contacts:", ncontact, ", of which: \n",
-                ncontactzero, " were no cases, ",ncontactfollow, " are in follow-up","\n# introductions: ", nclusters,
-                "\nMax. # secondary cases per case:", round(maxexact2),
+                ncontactzero, " were no cases, ",ncontactfollow, " are in follow-up",
+                "\nMax. # secondary cases per case:", round(maxupper),
                 "\n\nImportant dates (dashed vertical lines):\n",
                 outbreakdetect, ": ", input$date1label, "\n", controlstart, ": ", input$date2label
         ), hjust=0, gp= gpar(fontsize= 10))
-
 
 
         grid.arrange(arrangeGrob(p1, p3, p2, nrow = 3, heights= c(7.5,1.5,1)),
