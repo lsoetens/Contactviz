@@ -22,8 +22,6 @@ shinyServer(function(input, output) {
 
         ranges <- reactiveValues(x = NULL, y = NULL)
 
-        output$plotcontacttrace <- renderPlot({
-
         myData<- reactive({
         inFile <- input$file1
 
@@ -34,6 +32,8 @@ shinyServer(function(input, output) {
         data<- read.csv(inFile$datapath, header=input$header, sep=input$sep,
                         stringsAsFactors=F)
         })
+
+        output$plotcontacttrace <- renderPlot({
 
         data<- myData()
 
