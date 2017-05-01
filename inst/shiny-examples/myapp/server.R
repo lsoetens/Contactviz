@@ -18,21 +18,56 @@ library(reshape2)
 
 
 
+
 shinyServer(function(input, output) {
 
-        ranges <- reactiveValues(x = NULL, y = NULL)
+  #check input fields
 
-        output$plotcontacttrace <- renderPlot({
+ data <- reactive({
+    validate(
+      need(input$file1 != "", "Please select a data set")
+    )
+    inFile <- input$file1
 
-        inFile <- input$file1
+    if (is.null(inFile))
+      return("NULL")
+    read.csv(inFile$datapath, header=TRUE, sep=input$sep,
+             stringsAsFactors=F)
+  })
 
-        if (is.null(inFile))
-        return(NULL)
+ currentdate<- reactive({
+    validate(
+      need(as.character(input$currentdate) != "", "Please set the 'current date' in the tab 'Outbreak Specific Settings'")
+    )
+   as.Date(input$currentdate, origin = "1970-01-01")
+  })
+
+ generationtime<- reactive({
+   validate(
+     need(as.character(input$generationinterval) != "", "Please specify the mean generation time in the tab 'Disease Specific Settings'")
+   )
+   as.numeric(input$generationinterval)
+ })
+
+ incubationperiod<- reactive({
+   validate(
+     need(as.character(input$incubationperiod) != "", "Please specify the mean incubation period in the tab 'Disease Specific Settings'")
+   )
+   as.numeric(input$incubationperiod)
+ })
+
+ incubationsd<- reactive({
+   validate(
+     need(as.character(input$sdincubationperiod) != "", "Please specify the standard deviation of the incubation period in the tab 'Disease Specific Settings'")
+   )
+   as.numeric(input$sdincubationperiod)
+ })
 
 
-        data<- read.csv(inFile$datapath, header=input$header, sep=input$sep,
-                        stringsAsFactors=F)
 
+output$plotcontacttrace <- renderPlot({
+
+        data<- data()
 
         withProgress(message = 'Processing...', value = 0, {
 
@@ -40,27 +75,33 @@ shinyServer(function(input, output) {
         incProgress(0.1, detail = paste("Loading data..."))
 
         #set the current date
-        currentdate<- reactive({ as.Date(input$currentdate, origin = "1970-01-01")})
         currentdate<- currentdate()
+
         #set dates for annotation
         #Outbreakdetected
-        outbreakdetect<- reactive({ as.Date(input$date1, origin = "1970-01-01")})
+        outbreakdetect<- reactive({
+          as.Date(input$date1, origin = "1970-01-01")
+          if (is.null(input$date1))
+            return("NULL")
+          })
         outbreakdetect<- outbreakdetect()
         date1label<- reactive({input$date1label})
         date1label<- date1label()
         #start control measures
-        controlstart<- reactive({ as.Date(input$date2, origin = "1970-01-01")})
+        controlstart<- reactive({
+          as.Date(input$date2, origin = "1970-01-01")
+          if (is.null(input$date1))
+            return("NULL")
+          })
         controlstart<- controlstart()
         date2label<- reactive({input$date2label})
         date2label<- date2label()
         #set mean generation time in days
-        generationtime<- reactive({ as.numeric(input$generationinterval)})
+
         generationtime<- generationtime()
         #set mean incubation period in days
-        incubationperiod<- reactive({as.numeric(input$incubationperiod)})
         incubationperiod<- incubationperiod()
         #set sd incubation period in days
-        incubationsd<- reactive({as.numeric(input$sdincubationperiod)})
         incubationsd<- incubationsd()
 
 
@@ -68,7 +109,11 @@ shinyServer(function(input, output) {
         country<- reactive({input$country})
         country<- country()
         disease<- reactive({input$disease})
+        disease2<- reactive({input$disease2})
         disease<- disease()
+        disease2<- disease2()
+
+        disease<- ifelse(disease != "other", disease, disease2)
 
         #width of surveillance interval
         surveillance<- reactive({input$surveillance})
@@ -76,6 +121,8 @@ shinyServer(function(input, output) {
         surveillance<- as.numeric(surveillance)
         problow<- ((100-surveillance)/2)/100
         probhigh<- 1-(((100-surveillance)/2)/100)
+
+
 
         ############# Start of analysis #################
 
@@ -488,15 +535,19 @@ shinyServer(function(input, output) {
         ncontactzero<- length(data$type[data$type=="contact" & data$probsymp < problow])
         ncontactfollow<- length(data$type[data$type=="contact" & data$probsymp >= problow])
         nclusters<- sum(data$root)
-        transmission<- subset(vertices.dataframe, vertices.dataframe$exposuretype %in% ardf_5total$exposure_type)
-        transmission$exposuretype<- factor(transmission$exposuretype, levels(droplevels(transmission$exposuretype)))
-        typetransmissiontable<- table(transmission$exposuretype, transmission$type)
+        data$status<- ifelse(data$type=="case", "case", ifelse(data$type=="contact" & data$probsymp < problow, "contact", "follow-up"))
+        data$status<- factor(data$status, levels= c("case", "contact", "follow-up"))
+        transmission<- subset(data, exposure_type %in% levels(droplevels(ardf_5total$exposure_type)))
+        transmission$exposure_type<- factor(transmission$exposure_type, levels(droplevels(transmission$exposure_type)))
+        typetransmissiontable<- table(transmission$exposure_type, transmission$status)
+
         labels<- c()
         for (i in (1:length(typetransmissiontable[,1]))){
-          temp<- paste(rownames(typetransmissiontable)[i], " (", typetransmissiontable[i,1], ",", typetransmissiontable[i,2], ")")
+          temp<- paste(rownames(typetransmissiontable)[i], " (", typetransmissiontable[i,1], ",", typetransmissiontable[i,2], ",", typetransmissiontable[i,3],")",  sep="")
           labels<- c(labels, temp)
         }
-        gendertable<- table(vertices.dataframe$gender, vertices.dataframe$type)
+
+        gendertable<- table(data$gender, data$status)
 
 
         #plot
@@ -506,34 +557,25 @@ shinyServer(function(input, output) {
         vertices.dataframe$currentdatelabel<- "current date"
         vertices.dataframe$id <- as.character(vertices.dataframe$id)
         vertices.dataframe$idsource <- as.character(vertices.dataframe$idsource)
-        vertices.dataframe$firstdiagnosis<- as.numeric(outbreakdetect)
-        vertices.dataframe$firstdiagnosis2<- outbreakdetect
-        vertices.dataframe$action<- as.numeric(controlstart)
-        vertices.dataframe$action2<- controlstart
 
-
-        dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(vertices.dataframe$date95, na.rm=T)+3), ymin=c(-Inf), ymax=c(Inf))
+        dfrect<- data.frame(xmin=c(currentdate), xmax= c(max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), ymin=c(-Inf), ymax=c(Inf))
         dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(-Inf), ymax=c(Inf))
         textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4), hjust= c(1, 0.5, 0 ))
 
-        annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
-
 
         p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
-          geom_segment(data=annotation,
-                       aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.3, inherit.aes=FALSE)+
           geom_text(data=textdf, aes(x=x, y=y, label=label, hjust=hjust), color="black", size=3)+
           geom_segment(data=subset(textdf, label=="past"), aes(x = x, y = y-1, xend = x-3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
           geom_segment(data=subset(textdf, label=="future"), aes(x = x, y = y-1, xend = x+3, yend = y-1), colour='black', size=0.4, arrow = arrow(length = unit(0.1, "cm")))+
           coord_cartesian(ylim = c(min(vertices.dataframe$yid, na.rm=T)-3, max(vertices.dataframe$yid, na.rm=T)+5),
-                          xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+                          xlim= c(min(vertices.dataframe$graphdate)-3, max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), expand=F)+
           geom_segment(data= subset(vertices.dataframe, !is.na(idsource) & idsource!=id),
                        aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type, drop=F))+
           scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="type of contact")+
           scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
-                              name="Exposure type \n(# cases, # contacts in follow-up)",
+                              name="Exposure type \n(# cases, # contacts no case, # contacts in follow-up)",
                               labels= labels)+
           geom_rect(data=subset(vertices.dataframe, type == "contact"),
                     aes(xmin=date05, xmax=date95, ymin=yid-0.2, ymax=yid+0.2, fill = type), inherit.aes=FALSE)+
@@ -553,8 +595,8 @@ shinyServer(function(input, output) {
                    aes(x=graphdate, y=yid, shape=gender),
                    col="black", fill= "black",
                    size=2)+
-          scale_shape_manual(name= "gender \n(# cases, # contacts in follow-up)", values=c(15, 23, 19),
-                    labels= c(paste(rownames(gendertable)," (", gendertable[,1],", ", gendertable[,2], ")", sep="")))+
+          scale_shape_manual(name= "gender \n(# cases, # contact no case, # contacts in follow-up)", values=c(15, 23, 19),
+                             labels= c(paste(rownames(gendertable)," (", gendertable[,1],", ", gendertable[,2],", ", gendertable[,3], ")", sep="")))+
           geom_text(data=subset(vertices.dataframe, type == "case"),
                     aes(x=  xiddate, y= yid+1.5, label= id),
                     color="black",
@@ -585,15 +627,14 @@ shinyServer(function(input, output) {
                  shape = guide_legend(order = 1),
                  linetype= guide_legend(order=2))
 
-        p1 <- p + theme(legend.position="none")
 
         p2<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
-          geom_segment(data=annotation,
-            aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
+          # geom_segment(data=annotation,
+          #   aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
           coord_cartesian(ylim = c(-0.2, 20),
-            xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+            xlim= c(min(vertices.dataframe$graphdate)-3, max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), expand=F)+
           geom_histogram(data=subset(vertices.dataframe, type=="case"),
             aes(x=graphdate, ..count..),
             binwidth= 3,
@@ -617,12 +658,12 @@ shinyServer(function(input, output) {
 
 
         p3<- ggplot(data=ma.dataframe2, aes(x=graphdate))+
-          geom_segment(data=annotation,
-                       aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
+          # geom_segment(data=annotation,
+          #              aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
           coord_cartesian(ylim = c(-0.5, maxupper+0.5),
-                          xlim= c(min(vertices.dataframe$graphdate)-3, max(vertices.dataframe$date95, na.rm=T)+3), expand=F)+
+                          xlim= c(min(vertices.dataframe$graphdate)-3,max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), expand=F)+
           geom_point(data=count_df2, aes(x=as.Date(Group.1), y=Group.2, size=freq), alpha=0.7, show.legend = FALSE)+
           scale_size_identity()+
           geom_ribbon(data=ma.dataframe2, aes(x=graphdate, ymax=upper.ci, ymin=lower.ci), fill="red", alpha=0.2)+
@@ -640,6 +681,47 @@ shinyServer(function(input, output) {
                 legend.key.size= unit(c(0.4), "cm"),
                 plot.title= element_text(size=10, face="bold"),
                 plot.margin = unit(c(0.5,0,0,0.35), "line"))
+
+        # if (outbreakdetect != "" & controlstart != ""){
+        #   annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
+        #   p<- p +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p2<- p2 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p3<- p3 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        # } else if (outbreakdetect != "" & controlstart == ""){
+        #   annotation<- data.frame(xmin=c(outbreakdetect), xmax=c(outbreakdetect+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
+        #   p<- p +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p2<- p2 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p3<- p3 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        # } else if (outbreakdetect == "" & controlstart != ""){
+        #   annotation<- data.frame(xmin=c(controlstart), xmax=c(controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
+        #   p<- p +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p2<- p2 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        #   p3<- p3 +
+        #     geom_segment(data=annotation,
+        #                  aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")
+        # } else {
+        #   p<- p
+        #   p2<- p2
+        #   p3<- p3
+        # }
+
+        p1 <- p + theme(legend.position="none")
 
 
         #plot attack rates
@@ -665,8 +747,8 @@ shinyServer(function(input, output) {
         text<- textGrob(x=unit(0.2, "npc"), y=unit(0.41, "npc"),label= paste("Summary statistics:",  "\n\n# cases: ", ncase, "\n# contacts:", ncontact, ", of which: \n",
                 ncontactzero, " were no cases, ",ncontactfollow, " are in follow-up",
                 "\nMax. # secondary cases per case:", round(maxupper),
-                "\n\nImportant dates (dashed vertical lines):\n",
-                outbreakdetect, ": ", input$date1label, "\n", controlstart, ": ", input$date2label
+                "\n\nImportant dates (dashed vertical lines):\n"#,
+                #outbreakdetect, ": ", input$date1label, "\n", controlstart, ": ", input$date2label
         ), hjust=0, gp= gpar(fontsize= 7))
 
         })
@@ -682,15 +764,8 @@ shinyServer(function(input, output) {
 
         output$tabeldata <- DT::renderDataTable(DT::datatable({
 
-                inFile <- input$file1
-
-                if (is.null(inFile))
-                        return(NULL)
-
-                data <- read.csv(inFile$datapath, header=input$header, sep=input$sep,
-                        stringsAsFactors=F)
-
-                data
+          data<- data()
+          data
         }, options= list(pageLength = 25)))
 
 })
