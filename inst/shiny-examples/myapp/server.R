@@ -1,3 +1,8 @@
+required.packages <- c("shiny", "xlsx", "igraph", "ggplot2", "plyr", "grid", "scales", "gtable", "gridExtra", "Rgraphics", "binom",
+                       "Hmisc", "boot", "RColorBrewer", "TTR", "reshape2")
+new.packages <- required.packages[!(required.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
 library(shiny)
 #load packages
 library(xlsx)
@@ -29,8 +34,8 @@ shinyServer(function(input, output) {
     )
     inFile <- input$file1
 
-    if (is.null(inFile))
-      return("NULL")
+    #if (is.null(inFile))
+    #  return("NULL")
     read.csv(inFile$datapath, header=TRUE, sep=input$sep,
              stringsAsFactors=F)
   })
@@ -79,21 +84,15 @@ output$plotcontacttrace <- renderPlot({
 
         #set dates for annotation
         #Outbreakdetected
-        outbreakdetect<- reactive({
-          as.Date(input$date1, origin = "1970-01-01")
-          if (is.null(input$date1))
-            return("NULL")
-          })
+        outbreakdetect<- reactive({input$date1})
         outbreakdetect<- outbreakdetect()
+        outbreakdetect<- ifelse(as.character(outbreakdetect)!= "", as.Date(outbreakdetect, origin = "1970-01-01"), as.character(outbreakdetect))
         date1label<- reactive({input$date1label})
         date1label<- date1label()
         #start control measures
-        controlstart<- reactive({
-          as.Date(input$date2, origin = "1970-01-01")
-          if (is.null(input$date1))
-            return("NULL")
-          })
+        controlstart<- reactive({input$date2})
         controlstart<- controlstart()
+        controlstart<- ifelse(as.character(controlstart)!= "", as.Date(controlstart, origin = "1970-01-01"), as.character(controlstart))
         date2label<- reactive({input$date2label})
         date2label<- date2label()
         #set mean generation time in days
@@ -109,11 +108,11 @@ output$plotcontacttrace <- renderPlot({
         country<- reactive({input$country})
         country<- country()
         disease<- reactive({input$disease})
-        disease2<- reactive({input$disease2})
+        #disease2<- reactive({input$disease2})
         disease<- disease()
-        disease2<- disease2()
+        #disease2<- disease2()
 
-        disease<- ifelse(disease != "other", disease, disease2)
+        #disease<- ifelse(disease != "other", disease, disease2)
 
         #width of surveillance interval
         surveillance<- reactive({input$surveillance})
@@ -580,17 +579,6 @@ output$plotcontacttrace <- renderPlot({
           geom_rect(data=subset(vertices.dataframe, type == "contact"),
                     aes(xmin=date05, xmax=date95, ymin=yid-0.2, ymax=yid+0.2, fill = type), inherit.aes=FALSE)+
           scale_fill_manual(values = c("#99000d"), labels= c("Monitoring period of \ncontacts in follow-up"), name= " ")+
-          # geom_segment(data=subset(vertices.dataframe, type == "contact"),
-          #         aes(x = date05, y = yid, xend = date95, yend = yid),
-          #         colour='black', size=0.5)+
-          # geom_point(data=subset(vertices.dataframe, type == "contact"),
-          #         aes(x=date05, y=yid, shape=gender),
-          #         col="black", fill= "black",
-          #         size=1)+
-          # geom_point(data=subset(vertices.dataframe, type == "contact"),
-          #         aes(x=date95, y=yid, shape=gender),
-          #         col="black", fill= "black",
-          #         size=1)+
           geom_point(data=subset(vertices.dataframe, type=="case"),
                    aes(x=graphdate, y=yid, shape=gender),
                    col="black", fill= "black",
@@ -617,10 +605,10 @@ output$plotcontacttrace <- renderPlot({
                 legend.text= element_text(size=7),
                 legend.title= element_text(size=7, face="bold"),
                 legend.key = element_blank(),
-                legend.margin=unit(0, "lines"),
+                legend.spacing = unit(0, "lines"),
                 panel.grid.minor.y = element_blank(),
                 panel.grid.major.y = element_blank(),
-                panel.margin = unit(c(0,0,0,0), "line"),
+                panel.spacing = unit(c(0,0,0,0), "line"),
                 plot.title= element_text(size=10, face="bold"),
                 plot.margin = unit(c(0,0,0,0.2), "line"))+
           guides(colour = guide_legend(order = 3),
@@ -747,8 +735,8 @@ output$plotcontacttrace <- renderPlot({
         text<- textGrob(x=unit(0.2, "npc"), y=unit(0.41, "npc"),label= paste("Summary statistics:",  "\n\n# cases: ", ncase, "\n# contacts:", ncontact, ", of which: \n",
                 ncontactzero, " were no cases, ",ncontactfollow, " are in follow-up",
                 "\nMax. # secondary cases per case:", round(maxupper),
-                "\n\nImportant dates (dashed vertical lines):\n"#,
-                #outbreakdetect, ": ", input$date1label, "\n", controlstart, ": ", input$date2label
+                "\n\nImportant dates (dashed vertical lines):\n",
+                currentdate, "current date \n" #, outbreakdetect, input$date1label, "\n", controlstart, input$date2label
         ), hjust=0, gp= gpar(fontsize= 7))
 
         })
