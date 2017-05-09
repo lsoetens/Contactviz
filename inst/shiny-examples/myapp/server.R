@@ -75,6 +75,83 @@ shinyServer(function(input, output, session) {
   )
 })
 
+ observe ({
+   disease<- reactive({input$disease})
+   disease<- disease()
+   if (disease == "measles") {
+     updateTextInput(session, "generationinterval",
+                   label = "Mean generation interval in days",
+                   value = "11.7")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "12.5")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.23")
+   } else if (disease == "mumps"){
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "18")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "19.5")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.12")
+   } else if (disease == "RSV"){
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "7.5")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "4.4")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.24")
+   } else if (disease == "SARS"){
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "8.4")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "4.0")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.81")
+   } else if (disease == "smallpox"){
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "18")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "13")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.13")
+   } else if (disease == "varicella"){
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "14")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "14")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "1.14")
+   } else {
+     updateTextInput(session, "generationinterval",
+                     label = "Mean generation interval in days",
+                     value = "")
+     updateTextInput(session, "incubationperiod",
+                     label = "Mean incubation period in days",
+                     value = "")
+     updateTextInput(session, "sdincubationperiod",
+                     label = "Sd incubation period in days",
+                     value = "")
+   }
+ })
+
+
 
 
 output$plotcontacttrace <- renderPlot({
