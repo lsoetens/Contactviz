@@ -82,74 +82,97 @@ shinyServer(function(input, output, session) {
      updateTextInput(session, "generationinterval",
                    label = "Mean generation interval in days",
                    value = "11.7")
+     output$generationref<- renderText("Vink et al (2014) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "12.5")
+     output$incubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.23")
+     output$sdincubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
+
    } else if (disease == "mumps"){
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
                      value = "18")
+     output$generationref<- renderText("Vink et al (2014) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "19.5")
+     output$incubationref<- renderText("Sartwell (1966) - AJE")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.12")
+     output$sdincubationref<- renderText("Sartwell (1966) - AJE")
    } else if (disease == "RSV"){
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
                      value = "7.5")
+     output$generationref<- renderText("Vink et al (2014) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "4.4")
+     output$incubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.24")
+     output$sdincubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
    } else if (disease == "SARS"){
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
                      value = "8.4")
+     output$generationref<- renderText("Wallinga et al (2004) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "4.0")
+     output$incubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.81")
+     output$sdincubationref<- renderText("Lessler et al (2009) - Lancet Infect Dis")
    } else if (disease == "smallpox"){
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
-                     value = "18")
+                     value = "17.7")
+     output$generationref<- renderText("Vink et al (2014) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "13")
+     output$incubationref<- renderText("Sartwell (1966) - AJE")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.13")
+     output$sdincubationref<- renderText("Sartwell (1966) - AJE")
    } else if (disease == "varicella"){
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
                      value = "14")
+     output$generationref<- renderText("Vink et al (2014) - AJE")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "14")
+     output$incubationref<- renderText("Sartwell (1966) - AJE")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "1.14")
+     output$sdincubationref<- renderText("Sartwell (1966) - AJE")
    } else {
      updateTextInput(session, "generationinterval",
                      label = "Mean generation interval in days",
                      value = "")
+     output$generationref<- renderText("")
      updateTextInput(session, "incubationperiod",
                      label = "Mean incubation period in days",
                      value = "")
+     output$incubationref<- renderText("")
      updateTextInput(session, "sdincubationperiod",
                      label = "Sd incubation period in days",
                      value = "")
+     output$sdincubationref<- renderText("")
    }
  })
+
 
 
 

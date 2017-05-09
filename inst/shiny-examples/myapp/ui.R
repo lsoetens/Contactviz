@@ -55,8 +55,11 @@ shinyUI(fluidPage(
                                 column(4,
                                         br(),
                                         textInput("generationinterval", label = "Mean generation interval in days", value = ""),
+                                        h6(textOutput("generationref")),
                                         textInput("incubationperiod", label = "Mean incubation period in days", value = ""),
+                                        h6(textOutput("incubationref")),
                                         textInput("sdincubationperiod", label = "Sd incubation period in days", value = ""),
+                                        h6(textOutput("sdincubationref")),
                                         p("Note: the incubation period distribution is assumed to be a log-normal distribution")
 
                                 ),
