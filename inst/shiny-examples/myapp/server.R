@@ -1,4 +1,4 @@
-required.packages <- c("shiny", "xlsx", "igraph", "ggplot2", "plyr", "grid", "scales", "gtable", "gridExtra", "Rgraphics", "binom",
+required.packages <- c("shiny", "xlsx", "igraph", "ggplot2", "plyr", "grid", "scales", "gtable", "gridExtra", "binom",
                        "Hmisc", "boot", "RColorBrewer", "TTR", "reshape2")
 new.packages <- required.packages[!(required.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -13,7 +13,6 @@ library(grid)
 library(scales)
 library(gtable)
 library(gridExtra)
-library(RGraphics)
 library(binom)
 library(Hmisc)
 library(boot)
@@ -24,53 +23,80 @@ library(reshape2)
 
 
 
-shinyServer(function(input, output) {
+shinyServer(function(input, output, session) {
 
   #check input fields
 
- data <- reactive({
+  #validation checks
+  output$validation <- renderText({
     validate(
       need(input$file1 != "", "Please select a data set")
     )
-    inFile <- input$file1
+    validate(
+      need(as.character(input$currentdate) != "", "Please set the 'current date' in the tab 'Outbreak Specific Settings'")
+    )
+    validate(
+      need(as.character(input$generationinterval) != "", "Please specify the mean generation time in the tab 'Disease Specific Settings'")
+    )
+    validate(
+      need(as.character(input$incubationperiod) != "", "Please specify the mean incubation period in the tab 'Disease Specific Settings'")
+    )
+    validate(
+      need(as.character(input$sdincubationperiod) != "", "Please specify the sd of the incubation period in the tab 'Disease Specific Settings'")
+    )
 
-    #if (is.null(inFile))
-    #  return("NULL")
+  })
+
+
+ # load data
+
+ data <- reactive({
+    validate(
+      need(input$file1 != "", "")
+    )
+    inFile <- input$file1
+    if (is.null(inFile))
+      return(NULL)
+
     read.csv(inFile$datapath, header=TRUE, sep=input$sep,
              stringsAsFactors=F)
   })
 
- currentdate<- reactive({
-    validate(
-      need(as.character(input$currentdate) != "", "Please set the 'current date' in the tab 'Outbreak Specific Settings'")
-    )
-   as.Date(input$currentdate, origin = "1970-01-01")
-  })
 
- generationtime<- reactive({
-   validate(
-     need(as.character(input$generationinterval) != "", "Please specify the mean generation time in the tab 'Disease Specific Settings'")
-   )
-   as.numeric(input$generationinterval)
- })
+ observe ({
+  data<- data()
+  names(data)<- tolower(names(data))
+  data$date_onset_disease<- as.Date(data$dod, format="%Y-%m-%d")
+  date<- max(data$date_onset_disease, na.rm = T)
+  updateDateInput(session, "currentdate",
+                  label = "Current date (yyyy-mm-dd)",
+                  value = date
 
- incubationperiod<- reactive({
-   validate(
-     need(as.character(input$incubationperiod) != "", "Please specify the mean incubation period in the tab 'Disease Specific Settings'")
-   )
-   as.numeric(input$incubationperiod)
- })
-
- incubationsd<- reactive({
-   validate(
-     need(as.character(input$sdincubationperiod) != "", "Please specify the standard deviation of the incubation period in the tab 'Disease Specific Settings'")
-   )
-   as.numeric(input$sdincubationperiod)
- })
+  )
+})
 
 
 
 output$plotcontacttrace <- renderPlot({
+
+        if (input$plotoutput == 0)
+        return()
+
+        currentdate<- eventReactive(input$plotoutput, {
+            as.Date(input$currentdate, origin = "1970-01-01")
+        })
+        generationtime<- eventReactive(input$plotoutput, {
+            as.numeric(input$generationinterval)
+        })
+        incubationperiod<- eventReactive(input$plotoutput, {
+            as.numeric(input$incubationperiod)
+        })
+        incubationsd<- eventReactive(input$plotoutput, {
+            as.numeric(input$sdincubationperiod)
+        })
+        disease<- eventReactive(input$plotoutput, {input$disease})
+        disease2<- eventReactive(input$plotoutput, {input$disease2})
+
 
         data<- data()
 
@@ -107,12 +133,10 @@ output$plotcontacttrace <- renderPlot({
         #country and disease of outbreak for title plot
         country<- reactive({input$country})
         country<- country()
-        disease<- reactive({input$disease})
-        #disease2<- reactive({input$disease2})
         disease<- disease()
-        #disease2<- disease2()
+        disease2<- disease2()
 
-        #disease<- ifelse(disease != "other", disease, disease2)
+        disease<- ifelse(disease != "other", disease, disease2)
 
         #width of surveillance interval
         surveillance<- reactive({input$surveillance})
@@ -750,8 +774,20 @@ output$plotcontacttrace <- renderPlot({
 
 
 
+
         output$tabeldata <- DT::renderDataTable(DT::datatable({
 
+          data <- reactive({
+            validate(
+              need(input$file1 != "", "")
+            )
+            inFile <- input$file1
+            if (is.null(inFile))
+            return(NULL)
+
+            read.csv(inFile$datapath, header=TRUE, sep=input$sep,
+                     stringsAsFactors=F)
+          })
           data<- data()
           data
         }, options= list(pageLength = 25)))

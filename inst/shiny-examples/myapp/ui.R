@@ -46,28 +46,28 @@ shinyUI(fluidPage(
                                         br(),
                                         selectInput("disease", label = "Infectious disease of study",
                                                    choices = list("Smallpox" = "smallpox", "Other..." = "other"),
-                                                   selected = "smallpox")#,
-                                        # conditionalPanel(
-                                        #  condition = "input.disease == 'other'",
-                                        #  textInput("disease2", label = "Other namely:", value = "")
-                                        # )
+                                                   selected = NULL),
+                                        conditionalPanel(
+                                         condition = "input.disease == 'other'",
+                                         textInput("disease2", label = "Other namely:", value = "")
+                                        )
                                 ),
                                 column(4,
                                         br(),
-                                        # conditionalPanel(
-                                        #   condition = "input.disease == 'smallpox'",
+                                        conditionalPanel(
+                                          condition = "input.disease == 'smallpox'",
                                         textInput("generationinterval", label = "Mean generation interval in days", value = "18"),
                                         textInput("incubationperiod", label = "Mean incubation period in days", value = "13"),
                                         textInput("sdincubationperiod", label = "Sd incubation period in days", value = "1.13"),
                                         p("Note: the incubation period distribution is assumed to be a log-normal distribution")
-                                        #),
-                                       # conditionalPanel(
-                                       #   condition = "input.disease == 'other'",
-                                       #   textInput("generationinterval", label = "Mean generation interval in days", value = ""),
-                                       #   textInput("incubationperiod", label = "Mean incubation period in days", value = ""),
-                                       #   textInput("sdincubationperiod", label = "Sd incubation period in days", value = ""),
-                                       #   p("Note: the incubation period distribution is assumed to be a log-normal distribution")
-                                       # )
+                                        ),
+                                       conditionalPanel(
+                                         condition = "input.disease == 'other'",
+                                         textInput("generationinterval", label = "Mean generation interval in days", value = ""),
+                                         textInput("incubationperiod", label = "Mean incubation period in days", value = ""),
+                                         textInput("sdincubationperiod", label = "Sd incubation period in days", value = ""),
+                                         p("Note: the incubation period distribution is assumed to be a log-normal distribution")
+                                       )
 
                                 ),
                                 column(4,
@@ -99,7 +99,10 @@ shinyUI(fluidPage(
 
         hr(),
 
-        submitButton("Show output"),
+        p(textOutput("validation")),
+
+        #submitButton("Show output"),
+        actionButton("plotoutput", "Show output"),
 
 
         hr(),
