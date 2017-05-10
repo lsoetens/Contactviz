@@ -576,38 +576,22 @@ output$plotcontacttrace <- renderPlot({
 
         #add dummy generations for layout (no crossing lines)
         #first add generation number
-        generationdf<- data.frame(id=V(infectiongraph)$name, generation_rev=generationlayout[,2], generation= 5-generationlayout[,2])
+        generationdf<- data.frame(id=V(infectiongraph)$name, generation_rev=generationlayout[,2], generation= max(generationlayout[,2])-generationlayout[,2])
         vertices<- merge(vertices, generationdf, by="id")
         #create dummy dataframe
         verticedummy<- data.frame(id= vertices$id, idsource= vertices$idsource, generation=vertices$generation, root=vertices$root)
         #create endpoint variable
         verticedummy$endpoint<- ifelse(verticedummy$id %in% verticedummy$idsource, 0, 1)
 
-        #endpointdf<- subset(verticedummy, endpoint==1)
-        #endpointdf$nrnewrecords<- max(endpointdf$generation)-endpointdf$generation
-
-
-        # for (i in 1: (length(verticedummy$id)+ sum(endpointdf$nrnewrecords))){
-        #
-        #         tryCatch({
-        #         if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
-        #                 verticedummy$endpoint[i]<- c(0)
-        #                 root<- c(0)
-        #                 newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
-        #                 verticedummy<- rbind(verticedummy, newrow)
-        #         }
-        #         }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
-        # }
-        #
-        for (i in 1:(5*sum(verticedummy$endpoint))){
+        for (i in 1:(max(generationlayout[,2])*sum(verticedummy$endpoint))){
           tryCatch({
-          if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
-            verticedummy$endpoint[i]<- c(0)
-            root<- c(0)
-            newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
-            verticedummy<- rbind(verticedummy, newrow)
-          }
-          }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+            if (verticedummy$endpoint[i]==1 & (verticedummy$generation[i] < max(verticedummy$generation))){
+              verticedummy$endpoint[i]<- c(0)
+              root<- c(0)
+              newrow<- data.frame(id=paste("dummy",i), idsource= verticedummy$id[i], generation= verticedummy$generation[i]+1, endpoint= verticedummy$endpoint[i]+1, root= root)
+              verticedummy<- rbind(verticedummy, newrow)
+            }
+          }, error=function(e){cat("")})
         }
 
 
@@ -685,7 +669,7 @@ output$plotcontacttrace <- renderPlot({
         dfrect2<- data.frame(xmin=c(currentdate), xmax= c(currentdate+1), ymin=c(-Inf), ymax=c(Inf))
         textdf<- data.frame(label=c("past", "present", "future"), x= c(currentdate-2, currentdate + 0.5, currentdate+3), y=c(max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4, max(vertices.dataframe$yid, na.rm=T)+4), hjust= c(1, 0.5, 0 ))
 
-
+        # network
         p<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.3, inherit.aes=FALSE)+
@@ -733,25 +717,23 @@ output$plotcontacttrace <- renderPlot({
                 panel.grid.minor.y = element_blank(),
                 panel.grid.major.y = element_blank(),
                 panel.spacing = unit(c(0,0,0,0), "line"),
-                plot.title= element_text(size=10, face="bold"),
+                plot.title= element_text(size=10, face="bold", hjust=0.5),
                 plot.margin = unit(c(0,0,0,0.2), "line"))+
           guides(colour = guide_legend(order = 3),
                  shape = guide_legend(order = 1),
                  linetype= guide_legend(order=2))
 
+        # epicurve
 
         p2<- ggplot(data=vertices.dataframe, aes(x=graphdate))+
-          # geom_segment(data=annotation,
-          #   aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
-          coord_cartesian(ylim = c(-0.2, 20),
+          coord_cartesian(
             xlim= c(min(vertices.dataframe$graphdate)-3, max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), expand=F)+
           geom_histogram(data=subset(vertices.dataframe, type=="case"),
             aes(x=graphdate, ..count..),
-            binwidth= 3,
+            binwidth= floor(incubationperiod/4),
             col="black", fill= "black", alpha=0.5 )+
-          #scale_y_continuous(breaks=c(seq(0,20, by= 2)))+
           scale_y_continuous(breaks= pretty_breaks())+
           labs(x="Date symptom onset",
             y= "# cases")+
@@ -768,10 +750,8 @@ output$plotcontacttrace <- renderPlot({
             plot.margin = unit(c(0,0,0,0.6), "line"))+
           theme(legend.position="none")
 
-
+        # Rt plot
         p3<- ggplot(data=ma.dataframe2, aes(x=graphdate))+
-          # geom_segment(data=annotation,
-          #              aes(x = xmin, xend = xmin,  y = ymin, yend = ymax),alpha=0.2, size=1, linetype="dashed")+
           geom_rect(data=dfrect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.1, inherit.aes=FALSE)+
           geom_rect(data=dfrect2, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), alpha=0.4, inherit.aes=FALSE)+
           coord_cartesian(ylim = c(-0.5, maxupper+0.5),
@@ -870,7 +850,7 @@ output$plotcontacttrace <- renderPlot({
                 arrangeGrob(text,legend,ar, nrow=3, heights=c(2.5,4,3.5)),
                 widths=unit.c(unit(0.95, "npc") - legend$width, unit(0.05, "npc") + legend$width),
                 nrow=1)
-        }, width=1200, height=800)
+        })#, width=1800, height=1200)
 
 
 
