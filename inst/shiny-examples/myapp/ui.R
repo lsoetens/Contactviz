@@ -106,7 +106,8 @@ shinyUI(fluidPage(
                         ),
                 tabPanel(h4("Plot"),
                         br(),
-                        plotOutput("plotcontacttrace", width=1200, height=800)
+                        plotOutput("plotcontacttrace", width=1200, height=800),
+                        downloadButton("downloadPlot", "Download")
 
                         )
 

@@ -176,8 +176,8 @@ shinyServer(function(input, output, session) {
 
 
 
-
-output$plotcontacttrace <- renderPlot({
+plotfinal <- reactive({
+#output$plotcontacttrace <- renderPlot({
 
         if (input$plotoutput == 0)
         return()
@@ -679,7 +679,7 @@ output$plotcontacttrace <- renderPlot({
           coord_cartesian(ylim = c(min(vertices.dataframe$yid, na.rm=T)-3, max(vertices.dataframe$yid, na.rm=T)+5),
                           xlim= c(min(vertices.dataframe$graphdate)-3, max(c(vertices.dataframe$date95, currentdate), na.rm=T)+3), expand=F)+
           geom_segment(data= subset(vertices.dataframe, !is.na(idsource) & idsource!=id),
-                       aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type, drop=F))+
+                       aes(x=xsourcedate, y=ysource, xend=xiddate, yend=yid, col= exposuretype, linetype=type))+#, drop=F))+
           scale_linetype_manual(values=c("solid", "dashed"), labels= c("case-case", "case-contact"), name="type of contact")+
           scale_colour_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3"),
                               name="Exposure type \n(# cases, # contacts no case, # contacts in follow-up)",
@@ -818,8 +818,8 @@ output$plotcontacttrace <- renderPlot({
 
         #plot attack rates
         ar<- ggplot(data=ardf_5total, aes(x=exposure_type, y=ar))+
-          geom_bar(aes(x=exposure_type, ymax = max(ar), fill=exposure_type, drop=F), stat="identity",size=4, position=position_dodge(width=0.6))+
-          geom_errorbar(aes(x=exposure_type, ymin=arlo, ymax=arhi, drop=F), position=position_dodge(width=0.6), width=0.2, show.legend = FALSE)+
+          geom_bar(aes(x=exposure_type, fill=exposure_type), stat="identity",size=4, position=position_dodge(width=0.6))+ #ymax = max(ar),
+          geom_errorbar(aes(x=exposure_type, ymin=arlo, ymax=arhi), position=position_dodge(width=0.6), width=0.2, show.legend = FALSE)+
           scale_fill_manual(values=c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33"), guide=F)+
           labs(y= "Attack rate", x= "Exposure type") +
           theme_bw()+
@@ -850,7 +850,25 @@ output$plotcontacttrace <- renderPlot({
                 arrangeGrob(text,legend,ar, nrow=3, heights=c(2.5,4,3.5)),
                 widths=unit.c(unit(0.95, "npc") - legend$width, unit(0.05, "npc") + legend$width),
                 nrow=1)
-        })#, width=1800, height=1200)
+
+
+
+        })
+
+        output$plotcontacttrace <- renderPlot({
+          p<- plotfinal()
+          print(p)
+        })
+
+        output$downloadPlot <- downloadHandler(
+            filename = function() {
+            paste("Plot_", input$currentdate, ".pdf", sep="")
+            },
+            content = function(file) {
+              print(plotfinal())
+              ggsave(file, plotfinal(), width= 15, height= 10)
+                            }
+        )
 
 
 
