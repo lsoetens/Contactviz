@@ -196,7 +196,10 @@ plotfinal <- reactive({
         })
         disease<- eventReactive(input$plotoutput, {input$disease})
         disease2<- eventReactive(input$plotoutput, {input$disease2})
-
+        # outbreakdetect<- eventReactive(input$plotoutput, {ifelse(as.character(input$date1)!= "", as.Date(input$date1, origin = "1970-01-01", format= "%Y-%m-%d"), as.character(input$date1))})
+        # controlstart<- eventReactive(input$plotoutput, {ifelse(as.character(input$date2)!= "", as.Date(input$date2, origin = "1970-01-01", format= "%Y-%m-%d"), as.character(input$date2))})
+        # date1label<- eventReactive(input$plotoutput, {input$date1label})
+        # date2label<- eventReactive(input$plotoutput, {input$date2label})
 
         data<- data()
 
@@ -210,19 +213,15 @@ plotfinal <- reactive({
 
         #set dates for annotation
         #Outbreakdetected
-        outbreakdetect<- reactive({input$date1})
-        outbreakdetect<- outbreakdetect()
-        outbreakdetect<- ifelse(as.character(outbreakdetect)!= "", as.Date(outbreakdetect, origin = "1970-01-01"), as.character(outbreakdetect))
-        date1label<- reactive({input$date1label})
-        date1label<- date1label()
+        #outbreakdetect<- outbreakdetect()
+        #outbreakdetect<- ifelse(as.character(outbreakdetect)!= "", as.Date(outbreakdetect, origin = "1970-01-01"), as.character(outbreakdetect))
+        #date1label<- date1label()
         #start control measures
-        controlstart<- reactive({input$date2})
-        controlstart<- controlstart()
-        controlstart<- ifelse(as.character(controlstart)!= "", as.Date(controlstart, origin = "1970-01-01"), as.character(controlstart))
-        date2label<- reactive({input$date2label})
-        date2label<- date2label()
+        #controlstart<- reactive({input$date2})
+        #controlstart<- controlstart()
+        #controlstart<- ifelse(as.character(controlstart)!= "", as.Date(controlstart, origin = "1970-01-01"), as.character(controlstart))
+        #date2label<- date2label()
         #set mean generation time in days
-
         generationtime<- generationtime()
         #set mean incubation period in days
         incubationperiod<- incubationperiod()
@@ -774,6 +773,8 @@ plotfinal <- reactive({
                 plot.title= element_text(size=10, face="bold"),
                 plot.margin = unit(c(0.5,0,0,0.35), "line"))
 
+
+        #add annotation to the plots (currently broken)
         # if (outbreakdetect != "" & controlstart != ""){
         #   annotation<- data.frame(xmin=c(outbreakdetect, controlstart), xmax=c(outbreakdetect+1, controlstart+1), ymin=c(min(vertices.dataframe$yid, na.rm=T)-3), ymax=c(max(vertices.dataframe$yid, na.rm=T)+5))
         #   p<- p +

@@ -2,6 +2,10 @@ library(shiny)
 
 # Define UI for application that plots random distributions
 shinyUI(fluidPage(
+        tags$head(
+          tags$style(HTML('#plotoutput{color: #fff; background-color: #337ab7; border-color: #2e6da4}')),
+          tags$style(HTML('#downloadPlot{color: #fff; background-color: #337ab7; border-color: #2e6da4}'))
+          ),
 
         titlePanel(h1("Contact tracing overview tool")),
         br(),
@@ -94,7 +98,7 @@ shinyUI(fluidPage(
 
         p(textOutput("validation")),
 
-        actionButton("plotoutput", "Show output"),
+        actionButton("plotoutput", "Show output in plot (takes about 20 seconds)"),
 
 
         hr(),
