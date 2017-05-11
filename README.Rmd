@@ -1,7 +1,7 @@
 ---
 title: "README"
 author: "Loes Soetens"
-date: "20 juni 2016"
+date: "11 may 2017"
 output: html_document
 ---
 
@@ -50,7 +50,7 @@ The second tab is concerned with disease specific settings, such as the paramete
 
 
 The third tab is on outbreak specific settings. The date of analysis ('current date') should be specified; it defaults to the date of onset of disease of the latest case in the dataset. 
-#, and there is the option of marking important dates in the outbreak.
+
 
 After uploading the data and setting the specific settings, one can press the 'plot output' button and subsequently a plot is shown at the bottom of the screen. It will take about 20 seconds for the plot to load, as it takes some time to estimate the outbreak parameters.
 The download-button below the plot makes it possible to download the plot as a pdf-file. 
