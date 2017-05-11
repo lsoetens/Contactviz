@@ -7,7 +7,7 @@ shinyUI(fluidPage(
           tags$style(HTML('#downloadPlot{color: #fff; background-color: #337ab7; border-color: #2e6da4}'))
           ),
 
-        titlePanel(h1("Contact tracing overview tool")),
+        titlePanel(h1("Contactviz: an analysis and visualization tool for contact tracing data")),
         br(),
         br(),
 

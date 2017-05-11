@@ -6,9 +6,9 @@ output: html_document
 ---
 
 
-*Contactviz*: visualization of contact tracing data
+*Contactviz*: an analysis and visualization tool for contact tracing data
 =================================================
-*Contactviz* implements new methods for the exploration and analysis of contact tracing data, with taking into account that the data are censored.
+*Contactviz* implements new methods for the exploration and analysis of contact tracing data, by taking into account that the data are censored. For a detailed explanation on the methods behind the estimation of the outbreak parameters, see (-link to article to be added-).
 
 
 Installing *Contactviz*
@@ -34,33 +34,36 @@ runContactviz()
 The shiny-app `Contactviz` is  available via a user-friendly web interface, running locally on the default web browser.
 
 
-![data](https://github.com/lsoetens/Contactviz/blob/master/Figs/input_tabs.PNG)
+![data](https://github.com/lsoetens/Contactviz/blob/master/Figs/input_tabs_2.PNG)
 
 
-The first tab 'data upload'  specifies the data requirements. 
+The first tab 'data upload'  specifies the data requirements. Currently only comma separated value (.csv) files are supported by the tool. On this github page, two example data sets can be downloaded (they are in the 'data' folder of this page). One is containing data on the smallpox outbreak in Tilburg, the Netherlands in 1951, and the other one contains simulated data. 
 
 
-![disease](https://github.com/lsoetens/Contactviz/blob/master/Figs/Disease_specific_settings.PNG)
+![disease](https://github.com/lsoetens/Contactviz/blob/master/Figs/Disease_specific_settings_2.PNG)
 
 
-The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. It also contains a slider for setting how strict you want to be in following-up contacts. 
+The second tab is concerned with disease specific settings, such as the parameters on the incubation period or generation interval. For several infectious diseases the parameters are built-in, but they can also be adjusted manually. It also contains a slider for setting how strict you want to be in following-up contacts. 
 
 
-![outbreak](https://github.com/lsoetens/Contactviz/blob/master/Figs/Outbreak_specific_settings.PNG)
+![outbreak](https://github.com/lsoetens/Contactviz/blob/master/Figs/Outbreak_specific_settings_2.PNG)
 
 
-The third tab is on outbreak specific settings. The data of analysis should be specified, and there is the option of marking important dates in the outbreak.
+The third tab is on outbreak specific settings. The date of analysis ('current date') should be specified; it defaults to the date of onset of disease of the latest case in the dataset. 
+#, and there is the option of marking important dates in the outbreak.
 
-After uploading the data and setting the specific settings, a plot is shown at the bottom of the screen.
+After uploading the data and setting the specific settings, one can press the 'plot output' button and subsequently a plot is shown at the bottom of the screen. It will take about 20 seconds for the plot to load, as it takes some time to estimate the outbreak parameters.
+The download-button below the plot makes it possible to download the plot as a pdf-file. 
 
 
-![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Plot_output.PNG)
+![plot](https://github.com/lsoetens/Contactviz/blob/master/Figs/Plot_output_2.PNG)
 
 
-This plot is the main output. It contains a time-oriented network of all cases (squares and diamonds) and contacts still in follow-up (horizontal bars); the evolution of Rt during the outbreak; an epicurve; and the estimations of the attack rates for various exposure routes.
+This plot is the main output. It contains a time-oriented network of all cases (squares and diamonds) and contacts still in follow-up (horizontal red bars); the evolution of Rt during the outbreak; an epicurve; and the estimations of the attack rates for various exposure routes.
 
 Next to this plot, the data itself can also be viewed in the other output- tab.
 
 
 ![table](https://github.com/lsoetens/Contactviz/blob/master/Figs/Plot_data_table.PNG)
 
+For those who are familiar with R, an R script containing the code behind the Shiny app can be found in the R folder on this github page. 
